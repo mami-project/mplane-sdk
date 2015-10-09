@@ -569,7 +569,7 @@ class HttpInitiatorClient(BaseClient):
                     mplane.model.parse_json(res.data.decode("utf-8")), identity)
             elif ctype == "text/html":
                 # Treat as a list of links to capability messages.
-                parser = CrawlParser(strict=False)
+                parser = CrawlParser()
                 parser.feed(res.data.decode("utf-8"))
                 parser.close()
                 for capurl in parser.urls:
