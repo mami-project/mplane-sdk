@@ -215,15 +215,16 @@ class ClientShell(cmd.Cmd):
         Set a default parameter value for subsequent capability
         invocation.
 
-        Usage: set [parameter-name] [value]
+        Usage: set [parameter-name] [value] ([value] ...)
 
         """
         try:
             sarg = arg.split()
             key = sarg.pop(0)
-            val = " ".join(sarg)
+            # For only one value use the string, to not break components not expecting lists
+            val = sarg if len(sarg) > 1 else sarg[0]
             self._defaults[key] = val
-            print(key + " = " + val)
+            print(key + " = " + str(val))
         except:
             print("Couldn't set default "+arg)
 
@@ -282,7 +283,7 @@ class ClientShell(cmd.Cmd):
             try:
                 for key in arg.split():
                     val = self._defaults[key]
-                    print(key + " = " + val)
+                    print(key + " = " + str(val))
             except:
                 print("No such default "+key)
         else:
@@ -352,7 +353,9 @@ class ClientShell(cmd.Cmd):
                     sys.stdout.write(pname + " = " + str(single_val) + "\n")
                 else:
                     sys.stdout.write(pname + " = ")
-                    self._defaults[pname] = input()
+                    values = [s.strip() for s in input().split()]
+                    # For only one value use the string, to not break components not expecting lists
+                    self._defaults[pname] = values if len(values) > 1 else values[0]
             params[pname] = self._defaults[pname]
 
         # Now invoke it

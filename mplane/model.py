@@ -2037,27 +2037,32 @@ class Parameter(Element):
         """
         Returns True if the parameter can take the specified value,
         False otherwise.
-        Either takes a value of the correct type for the associated
-        Primitive, or a string, which will be parsed to a value of
-        the correct type.
+        Either takes a list of values or a single value of the correct type for
+		the associated Primitive, or a list of strings or a single string, which
+        will be parsed to the correct type.
 
         """
         if isinstance(val, str):
             val = self._prim.parse(val)
+        if isinstance(val, list):
+            val = [self._prim.parse(s) if isinstance(s, str) else s for s in val]
 
         return self._constraint.met_by(val)
 
     def set_value(self, val):
         """
         Sets the value of the Parameter.
-        Either takes a value of the correct type for the associated Primitive, or
-        a string, which will be parsed to a value of the correct type.
+        Either takes a list of values or a single value of the correct type for
+		the associated Primitive, or a list of strings or a single string, which
+        will be parsed to the correct type.
 
         Raises ValueError if the value is not allowable for the Constraint.
 
         """
         if isinstance(val, str):
             val = self._prim.parse(val)
+        if isinstance(val, list):
+            val = [self._prim.parse(s) if isinstance(s, str) else s for s in val]
 
         if (val is None) or self._constraint.met_by(val):
             self._val = val
