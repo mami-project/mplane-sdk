@@ -28,6 +28,7 @@ import traceback
 import urllib3
 import argparse
 import configparser
+import shlex
 from time import sleep
 
 class ClientShell(cmd.Cmd):
@@ -288,7 +289,7 @@ class ClientShell(cmd.Cmd):
         else:
             print("%4u defaults" % len(self._defaults))
             for key, val in self._defaults.items():
-                print(key + " = " + val)
+                print(key + " = " + str(val))
 
     def complete_show(self, text, line, start_index, end_index):
         """Tab-complete the set of defaults in any position"""
@@ -372,6 +373,100 @@ class ClientShell(cmd.Cmd):
             if token.startswith(beginning):
                 matches.append(token[len(beginning) - len(text):])
         return matches
+
+    def do_savespec(self, arg):
+        """
+        Save capabilities and parameters as specifications in an envelope to a file.
+        Valid parameters need to be set beforehand.
+
+        If no labels or tokens are given, all capabilities which parameters are defined
+        get exported.
+
+        Usage: savespec [filepath] ([label-or-token] ...)
+
+        """
+        #shlex handles quotes in paths correctly
+        arg = shlex.split(arg)
+
+        if(len(arg) < 1):
+            print("Usage: savespec [filepath] ([label-or-token])")
+            return
+        path = arg.pop(0)
+
+        caps = []
+        if(len(arg) == 0):
+            for token in sorted(self._client.capability_tokens()):
+                caps.append(self._client.capability_for(token))
+        else:
+            for label in arg:
+                caps.append(self._client.capability_for(label))
+
+        env = mplane.model.Envelope()
+        for cap in caps:
+            spec = mplane.model.Specification(capability = cap)
+            # set temporal scope
+            if self._when is not None:
+                spec.set_when(self._when)
+            # fill in parameters
+            for pname in spec.parameter_names():
+                if spec.get_parameter_value(pname) is None:
+                    if pname in self._defaults:
+                        spec.set_parameter_value(pname, self._defaults[pname])
+            try:
+                spec.validate()
+            except ValueError:
+                print(spec.get_label() + " has missing parameters")
+                continue
+            env.append_message(spec)
+
+        env_json = mplane.model.unparse_json(env)
+        with open(path, "w") as f:
+            print(env_json, file = f)
+        print("ok")
+
+    def do_loadspec(self, arg):
+        """
+        Loads a specification from a file, runs it, and sets all parameters to the found values.
+        All parameters except "when" will be loaded.
+        The specification needs to be inside an envelope.
+
+        Usage: loadspec [filepath] [label]
+
+        """
+        #shlex handles quotes in paths correctly
+        arg = shlex.split(arg)
+
+        if(len(arg) < 2):
+            print("Usage: loadspec [filepath] [label]")
+            return
+        path = arg.pop(0)
+        label = arg.pop(0)
+        env = mplane.model.Envelope()
+        spec = None
+        cap = self._client.capability_for(label)
+        with open(path, "r") as f:
+            env = mplane.model.parse_json(f.read())
+
+        for message in env.messages():
+            if message.get_label() == label:
+                spec = message
+                break
+        if spec is None:
+            print("Couldn't find specification with label " + label + " in " + path)
+            return
+        
+        spec.fulfills(cap)
+
+        #Prompt for when if missing or inappropriate
+        while self._when is None or \
+              not self._when.follows(cap.when()):
+            sys.stdout.write("|when| = ")
+            self._when = mplane.model.When(input())
+
+        self._defaults.update(spec.parameter_values())
+        #invoke capability
+        self._client.invoke_capability(label, self._when, self._defaults)
+        print("ok")
 
     def do_listmeas(self, arg):
         """
