@@ -426,7 +426,7 @@ class ClientShell(cmd.Cmd):
 
     def do_loadspec(self, arg):
         """
-        Loads a specification from a file, runs it, and sets all parameters to the found values.
+        Loads a specification from a file and sets all parameters to the found values.
         All parameters except "when" will be loaded.
         The specification needs to be inside an envelope.
 
@@ -439,23 +439,37 @@ class ClientShell(cmd.Cmd):
         if(len(arg) < 2):
             print("Usage: loadspec [filepath] [label]")
             return
+
         path = arg.pop(0)
         label = arg.pop(0)
-        env = mplane.model.Envelope()
-        spec = None
-        cap = self._client.capability_for(label)
-        with open(path, "r") as f:
-            env = mplane.model.parse_json(f.read())
+        spec = self._spec_from_file(path, label)
 
-        for message in env.messages():
-            if message.get_label() == label:
-                spec = message
-                break
-        if spec is None:
-            print("Couldn't find specification with label " + label + " in " + path)
+        self._defaults.update(spec.parameter_values())
+        print("ok")
+
+    def do_loadrunspec(self, arg):
+        """
+        Loads a specification from a file, runs it, and sets all parameters to the found values.
+        All parameters except "when" will be loaded.
+        The specification needs to be inside an envelope.
+
+        Usage: loadrunspec [filepath] [label]
+
+        """
+        #shlex handles quotes in paths correctly
+        arg = shlex.split(arg)
+
+        if(len(arg) < 2):
+            print("Usage: loadrunspec [filepath] [label]")
             return
+
+        path = arg.pop(0)
+        label = arg.pop(0)
         
+        cap = self._client.capability_for(label)
+        spec = self._spec_from_file(path, label)
         spec.fulfills(cap)
+        self._defaults.update(spec.parameter_values())
 
         #Prompt for when if missing or inappropriate
         while self._when is None or \
@@ -463,10 +477,25 @@ class ClientShell(cmd.Cmd):
             sys.stdout.write("|when| = ")
             self._when = mplane.model.When(input())
 
-        self._defaults.update(spec.parameter_values())
         #invoke capability
         self._client.invoke_capability(label, self._when, self._defaults)
         print("ok")
+
+    def _spec_from_file(self, filepath, label):
+        env = mplane.model.Envelope()
+        spec = None
+
+        with open(filepath, "r") as f:
+            env = mplane.model.parse_json(f.read())
+
+        for message in env.messages():
+            if message.get_label() == label:
+                spec = message
+                break
+        if spec is None:
+            raise ValueError("Couldn't find specification with label " + label + " in " + path)
+        return spec
+
 
     def do_listmeas(self, arg):
         """
