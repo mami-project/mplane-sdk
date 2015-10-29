@@ -343,18 +343,7 @@ class ClientShell(cmd.Cmd):
             self._when = mplane.model.When(input())
 
         # Prompt for missing capabilities (saving these in defaults)
-        params = {}
-        for pname in sorted(cap.parameter_names()):
-            while pname not in self._defaults or \
-                  not cap.can_set_parameter_value(pname, self._defaults[pname]):
-                single_val = cap.get_single_parameter_value(pname)
-                if single_val is not None:
-                    self._defaults[pname] = str(single_val)
-                    sys.stdout.write(pname + " = " + str(single_val) + "\n")
-                else:
-                    sys.stdout.write(pname + " = ")
-                    self._defaults[pname] = input()
-            params[pname] = self._defaults[pname]
+        params = self._get_params(cap)
 
         # Now invoke it
         self._client.invoke_capability(cap.get_token(), self._when, params, relabel)
@@ -377,10 +366,9 @@ class ClientShell(cmd.Cmd):
     def do_savespec(self, arg):
         """
         Save capabilities and parameters as specifications in an envelope to a file.
-        Valid parameters need to be set beforehand.
+        If no valid parameters are defined, they will be prompted for.
 
-        If no labels or tokens are given, all capabilities which parameters are defined
-        get exported.
+        If no labels or tokens are given, all capabilities get saved.
 
         Usage: savespec [filepath] ([label-or-token] ...)
 
@@ -404,14 +392,16 @@ class ClientShell(cmd.Cmd):
         env = mplane.model.Envelope()
         for cap in caps:
             spec = mplane.model.Specification(capability = cap)
+            print("Processing " + spec.get_label() + "...")
             # set temporal scope
             if self._when is not None:
                 spec.set_when(self._when)
             # fill in parameters
+            params = self._get_params(cap)
             for pname in spec.parameter_names():
                 if spec.get_parameter_value(pname) is None:
-                    if pname in self._defaults:
-                        spec.set_parameter_value(pname, self._defaults[pname])
+                    if pname in params:
+                        spec.set_parameter_value(pname, params[pname])
             try:
                 spec.validate()
             except ValueError:
@@ -482,6 +472,9 @@ class ClientShell(cmd.Cmd):
         print("ok")
 
     def _spec_from_file(self, filepath, label):
+        """
+        Loads and returns a specification with the given label from a file
+        """
         env = mplane.model.Envelope()
         spec = None
 
@@ -496,6 +489,23 @@ class ClientShell(cmd.Cmd):
             raise ValueError("Couldn't find specification with label " + label + " in " + path)
         return spec
 
+    def _get_params(self, cap):
+        """
+        Asks user for parameter values of a capability, if missing
+        """
+        params = {}
+        for pname in sorted(cap.parameter_names()):
+            while pname not in self._defaults or \
+                  not cap.can_set_parameter_value(pname, self._defaults[pname]):
+                single_val = cap.get_single_parameter_value(pname)
+                if single_val is not None:
+                    self._defaults[pname] = str(single_val)
+                    sys.stdout.write(pname + " = " + str(single_val) + "\n")
+                else:
+                    sys.stdout.write(pname + " = ")
+                    self._defaults[pname] = input()
+            params[pname] = self._defaults[pname]
+        return params
 
     def do_listmeas(self, arg):
         """
