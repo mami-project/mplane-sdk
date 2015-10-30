@@ -34,6 +34,7 @@ from datetime import datetime
 import time
 from time import sleep
 import urllib3
+import threading
 
 # FIXME HACK
 # some urllib3 versions let you disable warnings about untrusted CAs,
@@ -259,6 +260,8 @@ class InitiatorHttpComponent(BaseComponent):
         self._result_url = dict()
         self.register_to_client()
 
+        self._callback_lock = threading.Lock()
+
         # periodically poll the Client/Supervisor for Specifications
         print("Checking for Specifications...")
         t = Thread(target=self.check_for_specs)
@@ -341,15 +344,16 @@ class InitiatorHttpComponent(BaseComponent):
                         self.idle_time = spec.when().timer_delays()[1]
                         break
 
-                    # hand spec to scheduler
-                    reply = self.scheduler.process_message(self._client_identity, spec, callback=self.return_results)
-                    if not isinstance(spec, mplane.model.Interrupt):
-                        self._result_url[spec.get_token()] = spec.get_link()
+                    # hand spec to scheduler, making sure the callback is called after
+                    with self._callback_lock:
+                        reply = self.scheduler.process_message(self._client_identity, spec, callback=self.return_results)
+                        if not isinstance(spec, mplane.model.Interrupt):
+                            self._result_url[spec.get_token()] = spec.get_link()
 
-                    # send receipt to the Client/Supervisor
-                    res = self.pool.urlopen('POST', self.result_path,
-                            body=mplane.model.unparse_json(reply).encode("utf-8"),
-                            headers={"content-type": "application/x-mplane+json"})
+                        # send receipt to the Client/Supervisor
+                        res = self.pool.urlopen('POST', self.result_path,
+                                                body=mplane.model.unparse_json(reply).encode("utf-8"),
+                                                headers={"content-type": "application/x-mplane+json"})
 
             # not registered on supervisor, need to re-register
             elif res.status == 428:
@@ -363,6 +367,9 @@ class InitiatorHttpComponent(BaseComponent):
         Checks if a job is complete, and in case sends it to the Client/Supervisor
 
         """
+        #wait for scheduling process above
+        with self._callback_lock:
+            pass
         job = self.scheduler.job_for_message(receipt)
         reply = job.get_reply()
 

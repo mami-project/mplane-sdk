@@ -461,8 +461,8 @@ class Scheduler(object):
                         return self.jobs[job_key].receipt
 
                     # Keep track of the job and return receipt
-                    new_job.schedule()
                     self.jobs[job_key] = new_job
+                    new_job.schedule()
                     print("Returning "+repr(new_job.receipt))
                     return new_job.receipt
 
