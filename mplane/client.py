@@ -205,8 +205,14 @@ class BaseClient(object):
 
         return (cap, spec)
 
-    def _handle_receipt(self, msg, identity):
-        self._add_receipt(msg, identity)
+    def _handle_receipt(self, msg, identity, token = None):
+        if token is not None and msg.get_token() is not token:
+            #If tokens differ, the receipt is a response to another receipt.
+            #Remove the old one, and invoke a capability based on the new one.
+            self._remove_receipt(self._receipts[token])
+            self.invoke_capability(msg.get_label(), msg.when(), msg.parameter_values())
+        else:
+            self._add_receipt(msg, identity)
 
     def _add_receipt(self, msg, identity):
         """
@@ -298,7 +304,7 @@ class BaseClient(object):
     def _handle_exception(self, msg, identity):
         self._add_result(msg)
 
-    def handle_message(self, msg, identity=None):
+    def handle_message(self, msg, identity=None, token = None):
         """
         Handle a message. Used internally to process
         mPlane messages received from a component. Can also be used
@@ -315,7 +321,7 @@ class BaseClient(object):
         elif isinstance(msg, mplane.model.Withdrawal):
             self._withdraw_capability(msg, identity)
         elif isinstance(msg, mplane.model.Receipt):
-            self._handle_receipt(msg, identity)
+            self._handle_receipt(msg, identity, token)
         elif isinstance(msg, mplane.model.Result):
             self._handle_result(msg, identity)
         elif isinstance(msg, mplane.model.Exception):
@@ -464,7 +470,8 @@ class HttpInitiatorClient(BaseClient):
         if (res.status == 200 and
             res.getheader("Content-Type") == "application/x-mplane+json"):
             component_identity = self._tls_state.extract_peer_identity(dst_url)
-            self.handle_message(mplane.model.parse_json(res.data.decode("utf-8")), component_identity)
+            token = res.getheader("mplane-token")
+            self.handle_message(mplane.model.parse_json(res.data.decode("utf-8")), component_identity, token)
         else:
             # Didn't get an mPlane reply. What now?
             pass
@@ -812,8 +819,11 @@ class ResultHandler(MPlaneHandler):
         else:
             self._respond_plain_text(400, "Invalid format")
             return
-
+        token = None
+        if "mplane-token" in self.request.headers:
+            token = self.request.headers["mplane-token"]
         self._listenerclient.handle_message(env,
-                            self._tls.extract_peer_identity(self.request))
+                            self._tls.extract_peer_identity(self.request),
+                            token)
         self._respond_plain_text(200)
         return

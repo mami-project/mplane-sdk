@@ -193,6 +193,18 @@ class Job(object):
         else:
             return self.receipt
 
+    def get_token(self):
+        """
+        Returns the token of the specification associated with this job
+        """
+        return self.specification.get_token()
+
+    def get_label(self):
+        """
+        Return the label of the specification associated with this job
+        """
+        return self.specification.get_label()
+
 
 class MultiJob(object):
     """

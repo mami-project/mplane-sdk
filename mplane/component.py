@@ -129,9 +129,10 @@ class MPlaneHandler(tornado.web.RequestHandler):
     handler to respond with an mPlane Message.
 
     """
-    def _respond_message(self, msg):
+    def _respond_message(self, msg, token = None):
         self.set_status(200)
         self.set_header("Content-Type", "application/x-mplane+json")
+        self.set_header("mplane-token", token)
         self.write(mplane.model.unparse_json(msg))
         self.finish()
 
@@ -223,7 +224,7 @@ class MessagePostHandler(MPlaneHandler):
                     break
 
         # return reply
-        self._respond_message(reply)
+        self._respond_message(reply, job.get_token())
 
 class InitiatorHttpComponent(BaseComponent):
 
@@ -378,17 +379,17 @@ class InitiatorHttpComponent(BaseComponent):
             job.failed() is not True):
             return
 
-        result_url = urllib3.util.parse_url(self._result_url[reply.get_token()])
+        result_url = urllib3.util.parse_url(self._result_url[job.get_token()])
         # send result to the Client/Supervisor
         if result_url != "" and self.pool.is_same_host(mplane.utils.parse_url(result_url)):
             res = self.pool.urlopen('POST', self.result_path,
                     body=mplane.model.unparse_json(reply).encode("utf-8"),
-                    headers={"content-type": "application/x-mplane+json"})
+                    headers={"content-type": "application/x-mplane+json", "mplane-token" : job.get_token()})
         else:
             pool = self.tls.pool_for(result_url.scheme, result_url.host, result_url.port)
             res = pool.urlopen('POST', result_url.path,
                     body=mplane.model.unparse_json(reply).encode("utf-8"),
-                    headers={"content-type": "application/x-mplane+json"})
+                    headers={"content-type": "application/x-mplane+json", "mplane-token" : job.get_token()})
 
         # handle response
         if isinstance(reply, mplane.model.Envelope):
@@ -400,7 +401,7 @@ class InitiatorHttpComponent(BaseComponent):
                 print("Exception for " + reply.get_token() + " successfully returned!")
                 return
 
-            label = reply.get_label()
+            label = job.get_label()
         if res.status == 200:
             print("Result for " + label + " successfully returned!")
         else:
