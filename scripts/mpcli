@@ -486,7 +486,7 @@ class ClientShell(cmd.Cmd):
                 spec = message
                 break
         if spec is None:
-            raise ValueError("Couldn't find specification with label " + label + " in " + path)
+            raise ValueError("Couldn't find specification with label " + label + " in " + filepath)
         return spec
 
     def _get_params(self, cap):
