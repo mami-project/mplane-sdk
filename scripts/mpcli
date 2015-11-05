@@ -608,6 +608,40 @@ class ClientShell(cmd.Cmd):
                 matches.append(token[len(beginning) - len(text):])
         return matches
 
+    def do_savemeas(self, arg):
+        """
+        Save results of measurements in an envelope to a file.
+
+        If no labels or tokens are given, all results get saved.
+
+        Usage: savemeas [filepath] ([label-or-token] ...)
+
+        """
+        #shlex handles quotes in paths correctly
+        arg = shlex.split(arg)
+
+        if(len(arg) < 1):
+            print("Usage: savemeas [filepath] ([label-or-token])")
+            return
+        path = arg.pop(0)
+
+        results = []
+        if(len(arg) == 0):
+            for token in self._client.result_tokens():
+                results.append(self._client.result_for(token))
+        else:
+            for label in arg:
+                results.append(self._client.result_for(label))
+
+        env = mplane.model.Envelope()
+        for res in results:
+            env.append_message(res)
+
+        env_json = mplane.model.unparse_json(env)
+        with open(path, "w") as f:
+            print(env_json, file = f)
+        print("ok")
+
     def do_tbenable(self, arg):
         """Enable tracebacks on uncaught exceptions"""
         self._print_tracebacks = True
