@@ -2256,7 +2256,7 @@ class Statement(object):
         d = {}
         for k in self.parameter_names():
             v = self.get_parameter_value(k)
-            if v:
+            if v is not None:
                 d[k] = v
         return d
 
