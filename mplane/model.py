@@ -1656,7 +1656,12 @@ class Registry(object):
             # (we assume that is is a file)
             scheme = urllib.parse.urlparse(uri).scheme
             if scheme == "file" or scheme == "":
-                uri = "file://" + normalize_path(uri)
+                path = normalize_path(uri)
+                if os.name == "nt":
+                    # on windows, the normalized path doesn't have a / in front,
+                    # but that is required
+                    path = "/" + path
+                uri = "file://" + path
 
             try:
                 with urllib.request.urlopen(uri) as stream:
