@@ -1294,7 +1294,7 @@ class _Primitive(object):
             return VALUE_NONE
         else:
             if isinstance(val, list) or isinstance(val, tuple):
-                return val
+                return [str(x) for x in val]
             else:
                 return str(val)
 
