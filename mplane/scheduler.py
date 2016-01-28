@@ -345,6 +345,7 @@ class MultiJob(object):
             return self.receipt
 
     def _job_callback(self, arg):
+        self.collect_results()        
         if self._callback:
             self._callback(self.receipt)
 

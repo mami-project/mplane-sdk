@@ -36,6 +36,7 @@ from time import sleep
 import urllib3
 import threading
 import socket
+import random
 
 # FIXME HACK
 # some urllib3 versions let you disable warnings about untrusted CAs,
@@ -63,6 +64,7 @@ class BaseComponent(object):
         self.config = config
 
         # registry initialization phase (preload + fetch from URI)
+        registry_uri = None
         if config is not None:
             if "Registries" in config:
                 if "preload" in config["Registries"]:
@@ -70,13 +72,10 @@ class BaseComponent(object):
                         mplane.model.preload_registry(reg)
                 if "default" in config["Registries"]:
                     registry_uri = config["Registries"]["default"]
-                else:
-                    registry_uri = None
-            else:
-                registry_uri = None
-        else:
-            registry_uri = None
+
         mplane.model.initialize_registry(registry_uri)
+        print("Base Registry name: %s \n" % registry_uri)
+        print("Base Registry_length: %d \n" %  len(mplane.model.registry_for_uri(registry_uri)))
 
         self.tls = mplane.tls.TlsState(self.config)
         self.scheduler = mplane.scheduler.Scheduler(config)
@@ -121,7 +120,7 @@ class BaseComponent(object):
 
     def remove_capability(self, capability):
         for service in self.scheduler.services:
-            if service.capability().get_label() == capability.get_label():
+            if service.capability().get_token() == capability.get_token():
                 self.scheduler.remove_service(service)
                 return
         print("No such service with label " + capability.get_label())
@@ -229,7 +228,11 @@ class DiscoveryHandler(MPlaneHandler):
         self.set_header("Content-Type", "text/html")
         self.write("<html><head><title>Capabilities</title></head><body>")
         no_caps_exposed = True
+        print("GO FOR CAPS")
         for key in self.scheduler.capability_keys():
+            print("KEY: ", key, self.scheduler.capability_for_key(key)._label )
+            print("NOINST", not isinstance(self.scheduler.capability_for_key(key), mplane.model.Withdrawal))
+            print("CLASS",self.scheduler.azn.check(self.scheduler.capability_for_key(key), self.tls.extract_peer_identity(self.request)))
             if (not isinstance(self.scheduler.capability_for_key(key), mplane.model.Withdrawal) and
                     self.scheduler.azn.check(self.scheduler.capability_for_key(key),
                                              self.tls.extract_peer_identity(self.request))):
@@ -327,6 +330,7 @@ class InitiatorHttpComponent(BaseComponent):
 
     def __init__(self, config, supervisor=False):
         self._supervisor = supervisor
+        self._callback_token = "comp-cb" + str(random.random())
         super(InitiatorHttpComponent, self).__init__(config)
 
         # configuration of URLs that will be used for requests
@@ -355,6 +359,7 @@ class InitiatorHttpComponent(BaseComponent):
         self.pool = self.tls.pool_for(self.registration_url.scheme,
                                       self.registration_url.host,
                                       self.registration_url.port)
+
         self._result_url = dict()
         self.register_to_client()
 
@@ -368,7 +373,6 @@ class InitiatorHttpComponent(BaseComponent):
     def register_to_client(self, caps=None):
         """
         Sends a list of capabilities to the Client, in order to register them
-
         """
         env = mplane.model.Envelope()
 
@@ -406,7 +410,8 @@ class InitiatorHttpComponent(BaseComponent):
                     exit(0)
 
             # add callback capability to the list
-            callback_cap = mplane.model.Capability(label="callback", when = "now ... future")
+            callback_cap = mplane.model.Capability(label="callback", when = "now ... future", token = self._callback_token)
+            
             env.append_message(callback_cap)
 
         # send the envelope to the client
@@ -461,7 +466,6 @@ class InitiatorHttpComponent(BaseComponent):
                         # send receipt to the Client/Supervisor
                         res = self.send_message(self._result_url[spec.get_token()], "POST", reply)
 
-
             # not registered on supervisor, need to re-register
             elif res.status == 428:
                 print("\nRe-registering capabilities on Client/Supervisor")
@@ -472,8 +476,8 @@ class InitiatorHttpComponent(BaseComponent):
                       "Client/Supervisor replied with " + str(res.status) + ": " + res.data.decode("utf-8"))
 
             sleep(self.idle_time)
-
-    def return_results(self, receipt):
+ 
+    def return_results(self,receipt):
         """
         Checks if a job is complete, and in case sends it to the Client/Supervisor
 
@@ -487,42 +491,19 @@ class InitiatorHttpComponent(BaseComponent):
         # check if job is completed
         if (job.finished() is not True and
             job.failed() is not True):
+            print("Not returning partial result (%s len: %d, label: %s)" % (type(reply).__name__, len(reply), reply.get_label()))
             return
 
         # send result to the Client/Supervisor
         res = self.send_message(self._result_url[reply.get_token()], "POST", reply)
 
+       # handle response
+        label = reply.get_label()
 
-        if "repository_uri" in self.config["component"]:
-            (proto, hostAndPort) = self.config["component"]["repository_uri"].split("://") # udp://127.0.0.1:9900
-            (host, port) = ("", "")
-            try:
-                (host, port) = hostAndPort.split(":")
-                port = int(port)
-            except:
-                raise ValueError("repository_uri given, but in a wrong format")
-            if host and port:
-                if proto == "udp":
-                    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                    sock.sendto(mplane.model.unparse_json(reply).encode("utf-8"), (host, port))
-                else:
-                    raise ValueError("repository_uri given, but protocol is wrong")
-            else:
-                raise ValueError("repository_uri given, but in a wrong format")
-
-        # handle response
-        if isinstance(reply, mplane.model.Envelope):
-            for msg in reply.messages():
-                label = msg.get_label()
-                break
-        else:
+        if res.status == 200:
             if isinstance(reply, mplane.model.Exception):
                 print("Exception for " + reply.get_token() + " successfully returned!")
                 return
-
-            label = reply.get_label()
-
-        if res.status == 200:
             print("Result for " + label + " successfully returned!")
         else:
             print("Error returning Result for " + label)

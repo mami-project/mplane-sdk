@@ -46,12 +46,13 @@ class RelayService(mplane.scheduler.Service):
 
     """
 
-    def __init__(self, cap, identity, client, lock, messages):
+    def __init__(self, cap, token, identity, client, lock, messages):
         self.relay = True
         self._identity = identity
         self._client = client
         self._lock = lock
         self._messages = messages
+        self._token = token
         super(RelayService, self).__init__(cap)
 
     def run(self, spec, check_interrupt):
@@ -64,9 +65,8 @@ class RelayService(mplane.scheduler.Service):
         pattern = re.compile("-\d+$")
         trunc_pos = pattern.search(spec.get_label())
         trunc_label = spec.get_label()[:trunc_pos.start()]
-        fwd_spec = self._client.invoke_capability(trunc_label, spec.when(), spec.parameter_values())
+        fwd_spec = self._client.invoke_capability(self._token, spec.when(), spec.parameter_values())
 
-        # wait for results from the component
         result = None
         pending = False
         while result is None:
@@ -100,7 +100,7 @@ class RelayService(mplane.scheduler.Service):
 
 class BaseSupervisor(object):
     
-    def __init__(self, config):
+    def __init__(self, config, run=True):
         self._caps = []
         self.config = config
 
@@ -218,12 +218,11 @@ class BaseSupervisor(object):
 
         """
         if isinstance(msg, mplane.model.Capability):
-            if [msg.get_label(), identity] not in self._caps:
-                self._caps.append([msg.get_label(), identity])
+            if [msg.get_token(), identity] not in self._caps:
+                self._caps.append([msg.get_token(), identity])
 
-                # create a new RelayService and store it
-                serv = RelayService(msg, identity, self._client,
-                                    self._lock, self._spec_messages)
+                serv = RelayService(msg, msg.get_token(), identity, self._client, self._lock, self._spec_messages)
+
                 self._component.scheduler.add_service(serv)
 
                 if self.config is not None:
@@ -270,7 +269,7 @@ class BaseSupervisor(object):
             # remove capability from internal state
             if not msg.get_label() == "callback":
                 self._component.remove_capability(self._component.scheduler.capability_for_key(msg.get_token()))
-                self._caps.remove([msg.get_label(), identity])
+                self._caps.remove([msg.get_token(), identity])
 
         elif isinstance(msg, mplane.model.Envelope):
             # if the envelope contains results, hand it to the RelayService, otherwise handle each message separately

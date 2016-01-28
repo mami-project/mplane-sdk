@@ -1626,20 +1626,25 @@ class Registry(object):
         # now parse includes depth-first
         if KEY_REGINCLUDE in d:
             for incuri in d[KEY_REGINCLUDE]:
+                print("Including registry uri %s (for registry %s)" % (incuri, self._uri))
                 self._include_registry(registry_for_uri(incuri))
+                print("Sucess for %s" % incuri)
 
         # finally, iterate over elements and add them to the table
         for elem in d[KEY_ELEMENTS]:
-            name = elem[KEY_ELEMNAME]
-            prim = _prim[elem[KEY_ELEMPRIM]]
-            if KEY_ELEMDESC in elem:
-                desc = elem[KEY_ELEMDESC]
-            else:
-                desc = None
-            # Add the element in the subordinate in the parent namespace --
-            # FIXME probably want to check to make sure this is the right
-            # thing to do
-            self._add_element(Element(name, prim, desc, self._uri))
+            if type(elem) is dict:
+                name = elem[KEY_ELEMNAME]
+                prim = _prim[elem[KEY_ELEMPRIM]]
+                if KEY_ELEMDESC in elem:
+                    desc = elem[KEY_ELEMDESC]
+                else:
+                    desc = None
+                # Add the element in the subordinate in the parent namespace --
+                # FIXME probably want to check to make sure this is the right
+                # thing to do
+                self._add_element(Element(name, prim, desc, self._uri))
+            elif not type(elem) is str or not elem.startswith("COMMENT:"):
+                raise ValueError("Registry element format error: %s" % repr(elem), type(elem))
 
     def _parse_from_file(self, filename=None):
         if filename is None:
@@ -1655,6 +1660,7 @@ class Registry(object):
             # normalize path if is a file or if no scheme is given
             # (we assume that is is a file)
             scheme = urllib.parse.urlparse(uri).scheme
+
             if scheme == "file" or scheme == "":
                 path = normalize_path(uri)
                 if os.name == "nt":
@@ -1708,9 +1714,13 @@ def registry_for_uri(uri):
 
     """
     global _registries
-
+    global _base_registry
+    if uri is None:
+        return _base_registry
     if uri not in _registries:
-        _registries[uri] = Registry(uri=uri)
+        newreg = Registry(uri=uri)
+        uri=newreg.uri()
+        _registries[newreg.uri()] = newreg 
 
     return _registries[uri]
 
@@ -2680,7 +2690,13 @@ class Specification(Statement):
         return KIND_SPECIFICATION
 
     def fulfills(self, capability):
-        """ Returns True if this Speficication fulfills the Capability"""
+        """ 
+        Returns True if this Specification fulfills the Capability
+        A specification fulfills a capability if the schemas match,
+        if the temporal scope of the specification is covered by that
+        of the capability, and if the specification's parameter values 
+        meet the capability's parameter constraints.
+        """
         # verify that the schema hash is equal
         if self._schema_hash() != capability._schema_hash():
             return False
@@ -2688,6 +2704,11 @@ class Specification(Statement):
         # Verify that the specification is within the capability's temporal scope
         if not self._when.follows(capability.when()):
             return False
+
+        # Verify that the specification's parameters match the capability's constraints
+        for pname in capability.parameter_names():
+            if not capability.can_set_parameter_value(pname, self.get_parameter_value(pname)):
+                return False
 
         # Works for me.
         return True
@@ -2924,7 +2945,6 @@ class _StatementNotification(Statement):
             self._params = deepcopy(statement._params)
             self._resultcolumns = deepcopy(statement._resultcolumns)
             self._token = statement.get_token()
-            self._reguri = statement._reguri
 
     def __repr__(self):
         return "<"+self.kind_str()+": "+self._label_repr()+self.get_token()+">"
@@ -3058,6 +3078,11 @@ class Envelope(object):
     def append_message(self, msg):
         """ Appends a message to an Envelope """
         self._messages.append(msg)
+
+    def last_message(self): 
+        if len(self._messages) == 0:
+            return None
+        return self._messages[-1]
 
     def messages(self):
         """ Returns an iterator to iterate over all messages in an Envelope """
