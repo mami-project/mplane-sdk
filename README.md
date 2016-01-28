@@ -1,10 +1,26 @@
-# mPlane Protocol Software Development Kit
+# mPlane Protocol Software Development Kit (MAMI Edition)
 
-This module contains the mPlane Software Development Kit.
+This module contains the mPlane Software Development Kit. 
 
-The mPlane Protocol provides control and data interchange for passive and active network measurement tasks. It is built around a simple workflow in which __Capabilities__ are published by __Components__, which can accept __Specifications__ for measurements based on these Capabilities, and provide __Results__, either inline or via an indirect export mechanism negotiated using the protocol.
+This fork of the mPlane SDK is intended as a basis for mPlane applications in
+the H2020 MAMI project. It is current to the release candidate for version
+1.0, including bugfixes made by ETH and during the mPlane project
+demonstration preparation process, also including multiple value support and
+JSON configuration file support.
 
-Measurement statements are fundamentally based on schemas divided into Parameters, representing information required to run a measurement or query; and Result Columns, the information produced by the measurement or query. Measurement interoperability is provided at the element level; that is, measurements containing the same Parameters and Result Columns are considered to be of the same type and therefore comparable.
+The mPlane Protocol provides control and data interchange for passive and
+active network measurement tasks. It is built around a simple workflow in
+which __Capabilities__ are published by __Components__, which can accept
+__Specifications__ for measurements based on these Capabilities, and provide
+__Results__, either inline or via an indirect export mechanism negotiated
+using the protocol.
+
+Measurement statements are fundamentally based on schemas divided into
+Parameters, representing information required to run a measurement or query;
+and Result Columns, the information produced by the measurement or query.
+Measurement interoperability is provided at the element level; that is,
+measurements containing the same Parameters and Result Columns are considered
+to be of the same type and therefore comparable.
 
 ## Learning More
 
