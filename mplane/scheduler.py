@@ -193,6 +193,18 @@ class Job(object):
         else:
             return self.receipt
 
+    def get_token(self):
+        """
+        Returns the token of the specification associated with this job
+        """
+        return self.specification.get_token()
+
+    def get_label(self):
+        """
+        Return the label of the specification associated with this job
+        """
+        return self.specification.get_label()
+
 
 class MultiJob(object):
     """
@@ -333,6 +345,7 @@ class MultiJob(object):
             return self.receipt
 
     def _job_callback(self, arg):
+        self.collect_results()        
         if self._callback:
             self._callback(self.receipt)
 
@@ -351,12 +364,10 @@ class Scheduler(object):
         if config:
             self.azn = mplane.azn.Authorization(config)
 
-            if "component" not in config.sections() or \
-                    "scheduler_max_results" not in config["component"]:
+            if "Component" not in config or "scheduler_max_results" not in config["Component"]:
                 self._max_results = 0
             else:
-                self._max_results = \
-                    int(config["component"]["scheduler_max_results"])
+                self._max_results = int(config["Component"]["scheduler_max_results"])
         else:
             self._max_results = 0
             self.azn = mplane.azn.Authorization()
@@ -411,6 +422,12 @@ class Scheduler(object):
         cap = service.capability()
         self._capability_cache[cap.get_token()] = cap
 
+    def remove_service(self, service):
+        """Remove a service from this Scheduler"""
+        self.services.remove(service)
+        withdrawn_cap = mplane.model.Withdrawal(capability=service.capability())
+        self._capability_cache[withdrawn_cap.get_token()] = withdrawn_cap
+
     def capability_keys(self):
         """
         Return keys (tokens) for the set of cached capabilities
@@ -461,8 +478,8 @@ class Scheduler(object):
                         return self.jobs[job_key].receipt
 
                     # Keep track of the job and return receipt
-                    new_job.schedule()
                     self.jobs[job_key] = new_job
+                    new_job.schedule()
                     print("Returning "+repr(new_job.receipt))
                     return new_job.receipt
 

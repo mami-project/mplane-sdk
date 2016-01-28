@@ -45,7 +45,7 @@ DUMMY_DN = "Identity.Unauthenticated.Default"
 class TlsState:
 
     def __init__(self, config, forged_identity=None):
-        if "TLS" not in config:
+        if config is None or "TLS" not in config:
             self._cafile = None
             self._certfile = None
             self._keyfile = None
@@ -84,7 +84,6 @@ class TlsState:
                                                     ca_certs=self._cafile)
             else:
                 raise ValueError("SSL requested without providing certificate")
-                exit(1)
         elif scheme == "file":
             # FIXME what to do here?
             raise ValueError("Unsupported scheme "+scheme)
@@ -109,8 +108,6 @@ class TlsState:
                        cert_reqs=ssl.CERT_REQUIRED)
         else:
             return None
-
-
 
     def extract_local_identity(self, forged_identity = None):
         """
@@ -142,7 +139,8 @@ class TlsState:
         HTTPRequest, or from a Urllib3's Url
         """
         if self._keyfile:
-            if isinstance(url_or_req,  urllib3.util.url.Url):
+            if isinstance(url_or_req, urllib3.util.url.Url):
+
                 # extract DN from the certificate retrieved from the url.
                 # Unfortunately, there seems to be no way to do this using urllib3,
                 # thus ssl library is being used

@@ -338,6 +338,8 @@ RANGE_SEP = " ... "
 DURATION_SEP = " + "
 PERIOD_SEP = " / "
 SET_SEP = ","
+MV_BEGIN = "["
+MV_END = "]"
 ANCHOR_SEP = "#"
 INNER_WHEN_SEP_START = " { "
 INNER_WHEN_SEP_END = " } "
@@ -1291,7 +1293,10 @@ class _Primitive(object):
         if val is None:
             return VALUE_NONE
         else:
-            return str(val)
+            if isinstance(val, list) or isinstance(val, tuple):
+                return [str(x) for x in val]
+            else:
+                return str(val)
 
 class _StringPrimitive(_Primitive):
     """
@@ -1621,20 +1626,25 @@ class Registry(object):
         # now parse includes depth-first
         if KEY_REGINCLUDE in d:
             for incuri in d[KEY_REGINCLUDE]:
+                print("Including registry uri %s (for registry %s)" % (incuri, self._uri))
                 self._include_registry(registry_for_uri(incuri))
+                print("Sucess for %s" % incuri)
 
         # finally, iterate over elements and add them to the table
         for elem in d[KEY_ELEMENTS]:
-            name = elem[KEY_ELEMNAME]
-            prim = _prim[elem[KEY_ELEMPRIM]]
-            if KEY_ELEMDESC in elem:
-                desc = elem[KEY_ELEMDESC]
-            else:
-                desc = None
-            # Add the element in the subordinate in the parent namespace --
-            # FIXME probably want to check to make sure this is the right
-            # thing to do
-            self._add_element(Element(name, prim, desc, self._uri))
+            if type(elem) is dict:
+                name = elem[KEY_ELEMNAME]
+                prim = _prim[elem[KEY_ELEMPRIM]]
+                if KEY_ELEMDESC in elem:
+                    desc = elem[KEY_ELEMDESC]
+                else:
+                    desc = None
+                # Add the element in the subordinate in the parent namespace --
+                # FIXME probably want to check to make sure this is the right
+                # thing to do
+                self._add_element(Element(name, prim, desc, self._uri))
+            elif not type(elem) is str or not elem.startswith("COMMENT:"):
+                raise ValueError("Registry element format error: %s" % repr(elem), type(elem))
 
     def _parse_from_file(self, filename=None):
         if filename is None:
@@ -1650,8 +1660,14 @@ class Registry(object):
             # normalize path if is a file or if no scheme is given
             # (we assume that is is a file)
             scheme = urllib.parse.urlparse(uri).scheme
+
             if scheme == "file" or scheme == "":
-                uri = "file://" + normalize_path(uri)
+                path = normalize_path(uri)
+                if os.name == "nt":
+                    # on windows, the normalized path doesn't have a / in front,
+                    # but that is required
+                    path = "/" + path
+                uri = "file://" + path
 
             try:
                 with urllib.request.urlopen(uri) as stream:
@@ -1698,9 +1714,13 @@ def registry_for_uri(uri):
 
     """
     global _registries
-
+    global _base_registry
+    if uri is None:
+        return _base_registry
     if uri not in _registries:
-        _registries[uri] = Registry(uri=uri)
+        newreg = Registry(uri=uri)
+        uri=newreg.uri()
+        _registries[newreg.uri()] = newreg 
 
     return _registries[uri]
 
@@ -1770,6 +1790,9 @@ def test_registry():
 # Constraints
 #######################################################################
 
+def _val_is_multiple(val):
+    return isinstance(val, (list, tuple))
+
 class _Constraint(object):
     """
     Represents a set of acceptable values for an element.
@@ -1780,20 +1803,30 @@ class _Constraint(object):
     Constraint classes through Parameters.
 
     """
-    def __init__(self, prim):
+    def __init__(self, prim, multival=False):
         super().__init__()
         self._prim = prim
+        self.multival = multival
 
     def __str__(self):
         """Represents this Constraint as a string"""
-        return CONSTRAINT_ALL
+        if self.multival:
+            return MV_BEGIN + CONSTRAINT_ALL + MV_END
+        else:
+            return CONSTRAINT_ALL
 
     def __repr__(self):
-        return "mplane.model.constraint_all"
+        if self.multival:
+            return "mplane.model.constraint_all_multiple"
+        else:
+            return "mplane.model.constraint_all"
 
     def met_by(self, val):
         """Determines if this constraint is met by a given value."""
-        return True
+        if self.multival:
+            return True
+        else:
+            return not _val_is_multiple(val)
 
     def single_value(self):
         """
@@ -1805,12 +1838,13 @@ class _Constraint(object):
         return None
 
 constraint_all = _Constraint(None)
+constraint_all_multiple = _Constraint(None, True)
 
 class _RangeConstraint(_Constraint):
     """Represents acceptable values for an element as an inclusive range"""
 
-    def __init__(self, prim, sval=None, a=None, b=None):
-        super().__init__(prim)
+    def __init__(self, prim, sval=None, a=None, b=None, multival=False):
+        super().__init__(prim, multival)
         if sval is not None:
             (astr, bstr) = sval.split(RANGE_SEP)
             self.a = prim.parse(astr)
@@ -1826,9 +1860,12 @@ class _RangeConstraint(_Constraint):
             (self.a, self.b) = (self.b, self.a)
 
     def __str__(self):
-        return self._prim.unparse(self.a) + \
-               RANGE_SEP + \
-               self._prim.unparse(self.b)
+        out = self._prim.unparse(self.a) + \
+              RANGE_SEP + \
+              self._prim.unparse(self.b)
+        if self.multival:
+            out = MV_BEGIN + out + MV_END
+        return out
 
     def __repr__(self):
         return "mplane.model.RangeConstraint("+repr(self._prim)+\
@@ -1836,7 +1873,16 @@ class _RangeConstraint(_Constraint):
 
     def met_by(self, val):
         """Determines if the value is within the range"""
-        return (val >= self.a) and (val <= self.b)
+        if _val_is_multiple(val):
+            if not self.multival:
+                return False
+            else:
+                for v in val:
+                    if v < self.a or v > self.b:
+                        return False
+                return True
+        else:
+            return (val >= self.a) and (val <= self.b)
 
     def single_value(self):
         """If this constraint only allows a single value, return it. Otherwise, return None."""
@@ -1847,8 +1893,8 @@ class _RangeConstraint(_Constraint):
 
 class _SetConstraint(_Constraint):
     """Represents acceptable values as a discrete set."""
-    def __init__(self, prim, sval=None, vs=None):
-        super().__init__(prim)
+    def __init__(self, prim, sval=None, vs=None, multival=False):
+        super().__init__(prim, multival)
         if sval is not None:
             self.vs = set(map(self._prim.parse, sval.split(SET_SEP)))
         elif vs is not None:
@@ -1857,7 +1903,10 @@ class _SetConstraint(_Constraint):
             self.vs = set()
 
     def __str__(self):
-        return SET_SEP.join(map(self._prim.unparse, self.vs))
+        out = SET_SEP.join(map(self._prim.unparse, self.vs))
+        if self.multival:
+            out = MV_BEGIN + out + MV_END
+        return out
 
     def __repr__(self):
         return "mplane.model.SetConstraint("+repr(self._prim)+\
@@ -1865,7 +1914,16 @@ class _SetConstraint(_Constraint):
 
     def met_by(self, val):
         """Determines if the value is a mamber of the set"""
-        return val in self.vs
+        if _val_is_multiple(val):
+            if not self.multival:
+                return False
+            else:
+                for v in val:
+                    if v not in self.vs:
+                        return False
+                return True
+        else:
+            return val in self.vs
 
     def single_value(self):
         """If this constraint only allows a single value, return it. Otherwise, return None."""
@@ -1874,6 +1932,14 @@ class _SetConstraint(_Constraint):
         else:
             return None
 
+class _NetworkConstraint(_Constraint):
+  """
+  Represents acceptable values as a network address with a prefix length.
+  Not yet implemented.
+
+  """
+  pass
+
 def parse_constraint(prim, sval):
     """
     Given a primitive and a string value, parses a constraint
@@ -1881,16 +1947,28 @@ def parse_constraint(prim, sval):
     appropriate constraint class.
 
     """
-    if sval == CONSTRAINT_ALL:
-        return constraint_all
-    elif sval.find(RANGE_SEP) > 0:
-        return _RangeConstraint(prim=prim, sval=sval)
+    if sval[0] == MV_BEGIN and sval[-1] == MV_END:
+        multival = True
+        sval = sval[1:-1]
     else:
-        return _SetConstraint(prim=prim, sval=sval)
+        multival = False
+
+    if sval == CONSTRAINT_ALL:
+        if multival:
+            return constraint_all_multiple
+        else:
+            return constraint_all
+    elif sval.find(RANGE_SEP) > 0:
+        return _RangeConstraint(prim=prim, sval=sval, multival=multival)
+    else:
+        return _SetConstraint(prim=prim, sval=sval, multival=multival)
 
 def test_constraints():
     assert constraint_all.met_by("whatever")
     assert constraint_all.met_by(None)
+
+    assert not constraint_all.met_by(["whatever", "something else"])
+    assert constraint_all_multiple.met_by(["whatever", "something else"])
 
     rc = parse_constraint(prim_natural,"0 ... 99")
     assert not rc.met_by(-1)
@@ -1900,9 +1978,14 @@ def test_constraints():
     assert not rc.met_by(100)
     assert str(rc) == "0 ... 99"
 
+    mrc = parse_constraint(prim_natural,"[0 ... 99]")
+    assert mrc.met_by((0,33,66,99))
+    assert not mrc.met_by((33,66,99,121))
+
     sc = parse_constraint(prim_address,"10.0.27.100,10.0.28.103")
     assert sc.met_by(ip_address('10.0.28.103'))
     assert not sc.met_by(ip_address('10.0.27.103'))
+
 
 #######################################################################
 # Statements
@@ -1969,27 +2052,40 @@ class Parameter(Element):
         """
         Returns True if the parameter can take the specified value,
         False otherwise.
-        Either takes a value of the correct type for the associated
-        Primitive, or a string, which will be parsed to a value of
-        the correct type.
+        Either takes a list of values or a single value of the correct type for
+        the associated Primitive, or a list of strings or a single string, which
+        will be parsed to the correct type.
 
         """
         if isinstance(val, str):
-            val = self._prim.parse(val)
+            if self._constraint.multival:
+                val = [s.strip() for s in val.split()]
+            else:
+                val = self._prim.parse(val)
+
+        if isinstance(val, list):
+            val = [self._prim.parse(s) if isinstance(s, str) else s for s in val]
 
         return self._constraint.met_by(val)
 
     def set_value(self, val):
         """
         Sets the value of the Parameter.
-        Either takes a value of the correct type for the associated Primitive, or
-        a string, which will be parsed to a value of the correct type.
+        Either takes a list of values or a single value of the correct type for
+        the associated Primitive, or a list of strings or a single string, which
+        will be parsed to the correct type.
 
         Raises ValueError if the value is not allowable for the Constraint.
 
         """
         if isinstance(val, str):
-            val = self._prim.parse(val)
+            if self._constraint.multival:
+                val = [s.strip() for s in val.split()]
+            else:
+                val = self._prim.parse(val)
+
+        if isinstance(val, list):
+            val = [self._prim.parse(s) if isinstance(s, str) else s for s in val]
 
         if (val is None) or self._constraint.met_by(val):
             self._val = val
@@ -2175,7 +2271,7 @@ class Statement(object):
         d = {}
         for k in self.parameter_names():
             v = self.get_parameter_value(k)
-            if v:
+            if v is not None:
                 d[k] = v
         return d
 
@@ -2321,7 +2417,7 @@ class Statement(object):
         spv = [self._params[k].unparse(self._params[k].get_value()) for k in spk]
         tstr = self._reguri + self._verb + " w " + str(self._when) +\
                " pk " + " ".join(spk) + \
-               " pv " + " ".join(spv) + \
+               " pv " + " ".join([str(x) for x in spv]) + \
                " r " + " ".join(sorted(self._resultcolumns.keys()))
         if astr:
             tstr += astr
@@ -2443,7 +2539,10 @@ class Statement(object):
 
         """
         for (k, v) in d.items():
-            self.add_parameter(k, val=v)
+            if isinstance(v, list) or isinstance(v, tuple):
+                self.add_parameter(k, val=v, constraint=constraint_all_multiple)
+            else:
+                self.add_parameter(k, val=v, constraint=constraint_all)
 
     def _from_dict(self, d):
         """
@@ -2591,7 +2690,13 @@ class Specification(Statement):
         return KIND_SPECIFICATION
 
     def fulfills(self, capability):
-        """ Returns True if this Speficication fulfills the Capability"""
+        """ 
+        Returns True if this Specification fulfills the Capability
+        A specification fulfills a capability if the schemas match,
+        if the temporal scope of the specification is covered by that
+        of the capability, and if the specification's parameter values 
+        meet the capability's parameter constraints.
+        """
         # verify that the schema hash is equal
         if self._schema_hash() != capability._schema_hash():
             return False
@@ -2599,6 +2704,11 @@ class Specification(Statement):
         # Verify that the specification is within the capability's temporal scope
         if not self._when.follows(capability.when()):
             return False
+
+        # Verify that the specification's parameters match the capability's constraints
+        for pname in capability.parameter_names():
+            if not capability.can_set_parameter_value(pname, self.get_parameter_value(pname)):
+                return False
 
         # Works for me.
         return True
@@ -2785,6 +2895,7 @@ class Exception(BareNotification):
                 errmsg = "Unspecified exception"
             self._errmsg = errmsg
 
+        # FIXME this does not appear to be used anywhere. Remove?
         self.status = status
 
     def __repr__(self):
@@ -2834,7 +2945,6 @@ class _StatementNotification(Statement):
             self._params = deepcopy(statement._params)
             self._resultcolumns = deepcopy(statement._resultcolumns)
             self._token = statement.get_token()
-            self._reguri = statement._reguri
 
     def __repr__(self):
         return "<"+self.kind_str()+": "+self._label_repr()+self.get_token()+">"
@@ -2968,6 +3078,11 @@ class Envelope(object):
     def append_message(self, msg):
         """ Appends a message to an Envelope """
         self._messages.append(msg)
+
+    def last_message(self): 
+        if len(self._messages) == 0:
+            return None
+        return self._messages[-1]
 
     def messages(self):
         """ Returns an iterator to iterate over all messages in an Envelope """

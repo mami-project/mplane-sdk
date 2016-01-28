@@ -28,6 +28,8 @@ import traceback
 import urllib3
 import argparse
 import configparser
+import shlex
+import json
 from time import sleep
 
 class ClientShell(cmd.Cmd):
@@ -47,16 +49,17 @@ class ClientShell(cmd.Cmd):
             urllib3.disable_warnings()
         except:
             pass
-            
-        # preload any registries necessary
-        if "client" in config:
 
-            if "registry_preload" in config["client"]:
-                mplane.model.preload_registry(
-                    config["client"]["registry_preload"])
-
-            if "registry_uri" in config["client"]:
-                registry_uri = config["client"]["registry_uri"]
+        if config is not None:
+            # preload any registries necessary
+            if "Registries" in config:
+                if "preload" in config["Registries"]:
+                    for reg in config["Registries"]["preload"]:
+                        mplane.model.preload_registry(reg)
+                if "default" in config["Registries"]:
+                    registry_uri = config["Registries"]["default"]
+                else:
+                    registry_uri = None
             else:
                 registry_uri = None
         else:
@@ -75,32 +78,24 @@ class ClientShell(cmd.Cmd):
         # don't print tracebacks by default
         self._print_tracebacks = False
 
-        # default workflow is client-initiated
-        # FIXME this should be boolean instead
-        self._workflow = "client-initiated"
-
-        if "client" in config:
-            if "workflow" in config["client"]:
-                self._workflow = config["client"]["workflow"]
-
-        if self._workflow == "component-initiated":
-            self._client = mplane.client.HttpListenerClient(config=config,
-                                                            tls_state=tls_state)
-        elif self._workflow == "client-initiated":
-            self._client = mplane.client.HttpInitiatorClient(config=config,
-                                                             tls_state=tls_state)
-
+        if config is None:
+            self._initiator = True
+            self._client = mplane.client.HttpInitiatorClient(tls_state=tls_state)
         else:
-            raise ValueError("workflow setting in " + args.CONF +
-                             " can only be 'client-initiated' or 'component-initiated'")
-
-
-        if "client" in config and self._workflow != "component-initiated":
-            if "default-url" in config["client"]:
-                self.do_seturl(config["client"]["default-url"])
-
-            if "capability-url" in config["client"]:
-                self.do_getcap(config["client"]["capability-url"])
+            if "Initiator" in config["Client"] and "Listener" in config["Client"]:
+                raise ValueError("Client cannot be 'Initiator' and 'Listener' simultaneously. "
+                                 "Remove one of them from " + args.config + "")
+            if "Initiator" in config["Client"]:
+                self._initiator = True
+                self._client = mplane.client.HttpInitiatorClient(tls_state=tls_state)
+                if "capability-url" in config["Client"]["Initiator"]:
+                    self.do_seturl(config["Client"]["Initiator"]["capability-url"])
+                    self.do_getcap(config["Client"]["Initiator"]["capability-url"])
+            elif "Listener" in config["Client"]:
+                self._initiator = False
+                self._client = mplane.client.HttpListenerClient(config=config, tls_state=tls_state)
+            else:
+                raise ValueError("Need either a 'Initiator' or 'Listener' object under 'Client' in " + args.config)
 
     def do_seturl(self, arg):
         """
@@ -117,7 +112,7 @@ class ClientShell(cmd.Cmd):
             print("Usage: seturl [url]")
             return
 
-        if self._workflow == "client-initiated":
+        if self._initiator is True:
             self._client.set_default_url(url)
         else:
             print("This command can only be used in client-initiated workflows")
@@ -130,7 +125,7 @@ class ClientShell(cmd.Cmd):
         Usage: getcap [url]
 
         """
-        if self._workflow == "client-initiated":
+        if self._initiator is True:
             try:
                 url = arg.split()[0]
                 url = urllib3.util.parse_url(url)
@@ -215,13 +210,13 @@ class ClientShell(cmd.Cmd):
         Set a default parameter value for subsequent capability
         invocation.
 
-        Usage: set [parameter-name] [value]
+        Usage: set [parameter-name] [value] ([value] ...)
 
         """
         try:
-            sarg = arg.split()
+            sarg = arg.split(maxsplit = 1)
             key = sarg.pop(0)
-            val = " ".join(sarg)
+            val = sarg[0]
             self._defaults[key] = val
             print(key + " = " + val)
         except:
@@ -282,13 +277,13 @@ class ClientShell(cmd.Cmd):
             try:
                 for key in arg.split():
                     val = self._defaults[key]
-                    print(key + " = " + val)
+                    print(key + " = " + str(val))
             except:
                 print("No such default "+key)
         else:
             print("%4u defaults" % len(self._defaults))
             for key, val in self._defaults.items():
-                print(key + " = " + val)
+                print(key + " = " + str(val))
 
     def complete_show(self, text, line, start_index, end_index):
         """Tab-complete the set of defaults in any position"""
@@ -342,18 +337,7 @@ class ClientShell(cmd.Cmd):
             self._when = mplane.model.When(input())
 
         # Prompt for missing capabilities (saving these in defaults)
-        params = {}
-        for pname in sorted(cap.parameter_names()):
-            while pname not in self._defaults or \
-                  not cap.can_set_parameter_value(pname, self._defaults[pname]):
-                single_val = cap.get_single_parameter_value(pname)
-                if single_val is not None:
-                    self._defaults[pname] = str(single_val)
-                    sys.stdout.write(pname + " = " + str(single_val) + "\n")
-                else:
-                    sys.stdout.write(pname + " = ")
-                    self._defaults[pname] = input()
-            params[pname] = self._defaults[pname]
+        params = self._get_params(cap)
 
         # Now invoke it
         self._client.invoke_capability(cap.get_token(), self._when, params, relabel)
@@ -372,6 +356,150 @@ class ClientShell(cmd.Cmd):
             if token.startswith(beginning):
                 matches.append(token[len(beginning) - len(text):])
         return matches
+
+    def do_savespec(self, arg):
+        """
+        Save capabilities and parameters as specifications in an envelope to a file.
+        If no valid parameters are defined, they will be prompted for.
+
+        If no labels or tokens are given, all capabilities get saved.
+
+        Usage: savespec [filepath] ([label-or-token] ...)
+
+        """
+        #shlex handles quotes in paths correctly
+        arg = shlex.split(arg)
+
+        if(len(arg) < 1):
+            print("Usage: savespec [filepath] ([label-or-token])")
+            return
+        path = arg.pop(0)
+
+        caps = []
+        if(len(arg) == 0):
+            for token in sorted(self._client.capability_tokens()):
+                caps.append(self._client.capability_for(token))
+        else:
+            for label in arg:
+                caps.append(self._client.capability_for(label))
+
+        env = mplane.model.Envelope()
+        for cap in caps:
+            spec = mplane.model.Specification(capability = cap)
+            print("Processing " + spec.get_label() + "...")
+            # set temporal scope
+            if self._when is not None:
+                spec.set_when(self._when)
+            # fill in parameters
+            params = self._get_params(cap)
+            for pname in spec.parameter_names():
+                if spec.get_parameter_value(pname) is None:
+                    if pname in params:
+                        spec.set_parameter_value(pname, params[pname])
+            try:
+                spec.validate()
+            except ValueError:
+                print(spec.get_label() + " has missing parameters")
+                continue
+            env.append_message(spec)
+
+        env_json = mplane.model.unparse_json(env)
+        with open(path, "w") as f:
+            print(env_json, file = f)
+        print("ok")
+
+    def do_loadspec(self, arg):
+        """
+        Loads a specification from a file and sets all parameters to the found values.
+        All parameters except "when" will be loaded.
+        The specification needs to be inside an envelope.
+
+        Usage: loadspec [filepath] [label]
+
+        """
+        #shlex handles quotes in paths correctly
+        arg = shlex.split(arg)
+
+        if(len(arg) < 2):
+            print("Usage: loadspec [filepath] [label]")
+            return
+
+        path = arg.pop(0)
+        label = arg.pop(0)
+        spec = self._spec_from_file(path, label)
+
+        self._defaults.update(spec.parameter_values())
+        print("ok")
+
+    def do_loadrunspec(self, arg):
+        """
+        Loads a specification from a file, runs it, and sets all parameters to the found values.
+        All parameters except "when" will be loaded.
+        The specification needs to be inside an envelope.
+
+        Usage: loadrunspec [filepath] [label]
+
+        """
+        #shlex handles quotes in paths correctly
+        arg = shlex.split(arg)
+
+        if(len(arg) < 2):
+            print("Usage: loadrunspec [filepath] [label]")
+            return
+
+        path = arg.pop(0)
+        label = arg.pop(0)
+        
+        cap = self._client.capability_for(label)
+        spec = self._spec_from_file(path, label)
+        spec.fulfills(cap)
+        self._defaults.update(spec.parameter_values())
+
+        #Prompt for when if missing or inappropriate
+        while self._when is None or \
+              not self._when.follows(cap.when()):
+            sys.stdout.write("|when| = ")
+            self._when = mplane.model.When(input())
+
+        #invoke capability
+        self._client.invoke_capability(label, self._when, self._defaults)
+        print("ok")
+
+    def _spec_from_file(self, filepath, label):
+        """
+        Loads and returns a specification with the given label from a file
+        """
+        env = mplane.model.Envelope()
+        spec = None
+
+        with open(filepath, "r") as f:
+            env = mplane.model.parse_json(f.read())
+
+        for message in env.messages():
+            if message.get_label() == label:
+                spec = message
+                break
+        if spec is None:
+            raise ValueError("Couldn't find specification with label " + label + " in " + filepath)
+        return spec
+
+    def _get_params(self, cap):
+        """
+        Asks user for parameter values of a capability, if missing
+        """
+        params = {}
+        for pname in sorted(cap.parameter_names()):
+            while pname not in self._defaults or \
+                  not cap.can_set_parameter_value(pname, self._defaults[pname]):
+                single_val = cap.get_single_parameter_value(pname)
+                if single_val is not None:
+                    self._defaults[pname] = str(single_val)
+                    sys.stdout.write(pname + " = " + str(single_val) + "\n")
+                else:
+                    sys.stdout.write(pname + " = ")
+                    self._defaults[pname] = input()
+            params[pname] = self._defaults[pname]
+        return params
 
     def do_listmeas(self, arg):
         """
@@ -474,6 +602,40 @@ class ClientShell(cmd.Cmd):
                 matches.append(token[len(beginning) - len(text):])
         return matches
 
+    def do_savemeas(self, arg):
+        """
+        Save results of measurements in an envelope to a file.
+
+        If no labels or tokens are given, all results get saved.
+
+        Usage: savemeas [filepath] ([label-or-token] ...)
+
+        """
+        #shlex handles quotes in paths correctly
+        arg = shlex.split(arg)
+
+        if(len(arg) < 1):
+            print("Usage: savemeas [filepath] ([label-or-token])")
+            return
+        path = arg.pop(0)
+
+        results = []
+        if(len(arg) == 0):
+            for token in self._client.result_tokens():
+                results.append(self._client.result_for(token))
+        else:
+            for label in arg:
+                results.append(self._client.result_for(label))
+
+        env = mplane.model.Envelope()
+        for res in results:
+            env.append_message(res)
+
+        env_json = mplane.model.unparse_json(env)
+        with open(path, "w") as f:
+            print(env_json, file = f)
+        print("ok")
+
     def do_tbenable(self, arg):
         """Enable tracebacks on uncaught exceptions"""
         self._print_tracebacks = True
@@ -499,17 +661,15 @@ if __name__ == "__main__":
                         help="Configuration file")
     args = parser.parse_args()
 
-    # Read the configuration file, if given
-    if args.config:
-        config = configparser.ConfigParser()
-        config.optionxform = str
-        config.read(mplane.utils.search_path(args.config))
+    # check if conf file parameter has been inserted in the command line
+    if not args.config:
+        print('\nWARNING: missing --config, using default settings. Client may be unstable\n')
+        parser.print_help()
+        config = None
     else:
-        # hack a default configuration together
-        config = {}
-        config["is_default"] = True
-        config["client"] = {}
-        config["client"]["workflow"] = "client-initiated"
+        # Read the configuration file
+        conf_file = open(mplane.utils.search_path(args.config), 'r')
+        config = json.load(conf_file)
 
     # create a shell
     cs = ClientShell(config)
