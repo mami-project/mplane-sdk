@@ -126,8 +126,7 @@ class BaseComponent(object):
         print("No such service with label " + capability.get_label())
 
 class ListenerHttpComponent(BaseComponent):
-
-    def __init__(self, config, io_loop=None):
+    def __init__(self, config, io_loop=None, as_daemon=False):
         self._port = DEFAULT_MPLANE_PORT
         if config is not None and "Component" in config and "Listener" in config["Component"]:
             if "port" in config["Component"]["Listener"]:
@@ -160,7 +159,7 @@ class ListenerHttpComponent(BaseComponent):
 
         print("ListenerHttpComponent running on port " + str(self._port))
         comp_t = Thread(target=self.listen_in_background, args=(io_loop,))
-        comp_t.setDaemon(True)
+        comp_t.setDaemon(as_daemon)
         comp_t.start()
 
     def listen_in_background(self, io_loop):

@@ -34,7 +34,7 @@ from time import sleep
 
 class ClientShell(cmd.Cmd):
 
-    intro = 'mPlane client shell (rev 20.1.2015, sdk branch)\n'\
+    intro = 'mPlane client shell (rev 29.1.2016, MAMI fork)\n'\
             'Type help or ? to list commands. ^D to exit.\n'
     prompt = '|mplane| '
 
@@ -78,24 +78,28 @@ class ClientShell(cmd.Cmd):
         # don't print tracebacks by default
         self._print_tracebacks = False
 
-        if config is None:
+        if config is None \
+                or "Client" not in config \
+                or "Initiator" in config["Client"] \
+                or "Listener" not in config["Client"]:
+            
+            # default to initiator without any preconfig
             self._initiator = True
             self._client = mplane.client.HttpInitiatorClient(tls_state=tls_state)
+            
+            # preconfig if we have a cap uri
+            if config is not None \
+                    and "Client" in config \
+                    and "Initiator" in config["Client"] \
+                    and "capability-url" in config["Client"]["Initiator"]:
+
+                self.do_seturl(config["Client"]["Initiator"]["capability-url"])
+                self.do_getcap(config["Client"]["Initiator"]["capability-url"])
+        elif "Listener" in config["Client"]:
+            self._initiator = False
+            self._client = mplane.client.HttpListenerClient(config=config, tls_state=tls_state)
         else:
-            if "Initiator" in config["Client"] and "Listener" in config["Client"]:
-                raise ValueError("Client cannot be 'Initiator' and 'Listener' simultaneously. "
-                                 "Remove one of them from " + args.config + "")
-            if "Initiator" in config["Client"]:
-                self._initiator = True
-                self._client = mplane.client.HttpInitiatorClient(tls_state=tls_state)
-                if "capability-url" in config["Client"]["Initiator"]:
-                    self.do_seturl(config["Client"]["Initiator"]["capability-url"])
-                    self.do_getcap(config["Client"]["Initiator"]["capability-url"])
-            elif "Listener" in config["Client"]:
-                self._initiator = False
-                self._client = mplane.client.HttpListenerClient(config=config, tls_state=tls_state)
-            else:
-                raise ValueError("Need either a 'Initiator' or 'Listener' object under 'Client' in " + args.config)
+            raise ValueError("Need either a 'Initiator' or 'Listener' under 'Client' in " + args.config)
 
     def do_seturl(self, arg):
         """
@@ -112,7 +116,7 @@ class ClientShell(cmd.Cmd):
             print("Usage: seturl [url]")
             return
 
-        if self._initiator is True:
+        if self._initiator:
             self._client.set_default_url(url)
         else:
             print("This command can only be used in client-initiated workflows")
@@ -655,7 +659,6 @@ class ClientShell(cmd.Cmd):
 
 if __name__ == "__main__":
 
-    # look for TLS configuration
     parser = argparse.ArgumentParser(description="mPlane generic testing client")
     parser.add_argument('--config', metavar="config-file",
                         help="Configuration file")
@@ -663,9 +666,6 @@ if __name__ == "__main__":
 
     # check if conf file parameter has been inserted in the command line
     if not args.config:
-        # FIXME this isn't really acceptable
-        print('\nWARNING: missing --config, using default settings. Client may be unstable\n')
-        parser.print_help()
         config = None
     else:
         # Read the configuration file

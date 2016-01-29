@@ -26,36 +26,26 @@
 import mplane.component
 import mplane.utils
 import json
+import sys
 import argparse
 
 if __name__ == "__main__":
 
     global args
     parser = argparse.ArgumentParser(description='mplane component runtime')
-    parser.add_argument('--config', metavar='conf-file', dest='CONF',
+    parser.add_argument('--config', metavar='conf-file', default="component.json",
                         help='Configuration file for the component')
     args = parser.parse_args()
 
-    # check if conf file parameter has been inserted in the command line
-    if not args.CONF:
-        print('\nWARNING: missing --config, using default settings. Component may be unstable\n')
-        parser.print_help()
-        config = None
-    else:
-        # Read the configuration file
-        config = mplane.utils.get_config(args.config)
+    # Try to read the configuration file
+    config = mplane.utils.get_config(args.config)
 
-    if config is None:
+    if "Listener" in config["Component"]:
+        component = mplane.component.ListenerHttpComponent(config)
+        if "Initiator" in config["Component"]: 
+            print("Ignoring 'Initiator' section in configuration file")
+    elif "Initiator" in config["Component"]:
         component = mplane.component.InitiatorHttpComponent(config)
     else:
-        if "Initiator" in config["Component"] and "Listener" in config["Component"]:
-            raise ValueError("Component cannot be 'Initiator' and 'Listener' simultaneously. "
-                             "Remove one of them from " + args.CONF + "")
-        if "Initiator" in config["Component"]:
-            component = mplane.component.InitiatorHttpComponent(config)
-        elif "Listener" in config["Component"]:
-            component = mplane.component.ListenerHttpComponent(config)
-        else:
-            print("WARNING: need either a 'Initiator' or 'Listener' object under 'Component' in " + args.CONF +
-                  ". Using default settings (Initiator)")
-            component = mplane.component.InitiatorHttpComponent(config)
+        print("Need either a 'Initiator' or 'Listener' under 'Component' in " + args.config)
+

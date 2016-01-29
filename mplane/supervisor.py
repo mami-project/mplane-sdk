@@ -137,7 +137,8 @@ class BaseSupervisor(object):
                                                             io_loop=self._io_loop)
 
             self._component = mplane.component.ListenerHttpComponent(config,
-                                                                     io_loop=self._io_loop)
+                                                                     io_loop=self._io_loop,
+                                                                     as_daemon=True)
         else:
             if ("Initiator" in self.config["Client"]
                     and "Listener" in self.config["Client"]):
@@ -172,7 +173,8 @@ class BaseSupervisor(object):
             # ListenerComponent
             elif "Listener" in self.config["Component"]:
                 self._component = mplane.component.ListenerHttpComponent(self.config,
-                                                                         io_loop=self._io_loop)
+                                                                         io_loop=self._io_loop,
+                                                                         as_daemon=True)
             else:
                 raise ValueError("Need either a 'Initiator' or 'Listener' object under 'Component' in config file")
 

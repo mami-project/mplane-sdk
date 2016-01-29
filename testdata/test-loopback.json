@@ -1,0 +1,31 @@
+{
+    "Access" : {
+        "Roles" : {
+            "unauthenticated" : ["tester"]
+        },
+        "Authorizations" : {
+            "tester" : ["test-loopback"]
+        }
+    },
+
+    "Registries": {
+        "default": "http://mplane.corvid.ch/registry/loopback",
+        "preload": [ "testdata/loopback-registry.json" ]
+    },
+
+    "Client": {
+        "Initiator" : {
+            "capability-url": "http://localhost:12280"
+        }
+    },
+
+    "Component": {
+        "Listener": {
+            "port": "12280",
+            "interfaces": []
+        },
+        "Modules": {
+            "mplane.components.loopback": {}
+        }
+    }
+}

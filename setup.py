@@ -7,7 +7,7 @@ long_description = '''
 This module contains the mPlane Software Development Kit.
 
 The draft protocol specification is available in
-https://github.com/fp7mplane/protocol-ri/blob/master/doc/protocol-spec.md.
+https://github.com/mami-project/mplane-sdk/blob/master/doc/protocol-spec.md.
 
 The mPlane Protocol provides control and data interchange for passive
 and active network measurement tasks. It is built around a simple
@@ -22,15 +22,21 @@ query; and Result Columns, the information produced by the measurement
 or query. Measurement interoperability is provided at the element level;
 that is, measurements containing the same Parameters and Result Columns
 are considered to be of the same type and therefore comparable.
+
+mPlane was developed by the European Commission Seventh Framework mPlane
+project (318627). The mPlane SDK is maintained and further developed by the
+European Commission Horizon 2020 funded Measurement and Architecture for a
+Middleboxed Internet (MAMI) project (688421). European Commission support
+for this work does not imply endorsement.
 '''
 
 setup(name='mplane-sdk',
-      version='0.9.1',
+      version='0.9.9',
       description='mPlane Software Development Kit for Python 3',
       long_description = long_description,
       author='Brian Trammell',
       author_email='brian@trammell.ch',
-      url='http://github.com/fp7mplane/protocol-ri',
+      url='http://github.com/mami-project/mplane-sdk',
       packages=[ "mplane",
                  "mplane.components"],
       package_data={'mplane': ['registry.json']},
