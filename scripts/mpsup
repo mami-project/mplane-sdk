@@ -42,8 +42,7 @@ if __name__ == "__main__":
         config = None
     else:
         # Read the configuration file
-        conf_file = open(mplane.utils.search_path(args.config), 'r')
-        config = json.load(conf_file)
+        mplane.utils.get_config(args.config)
 
     # Start the supervisor
     if "supervisor" in config and "class" in config["supervisor"]:

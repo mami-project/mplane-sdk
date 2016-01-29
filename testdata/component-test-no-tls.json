@@ -1,0 +1,30 @@
+{
+    "Access" : {
+        "Authorizations": {
+            "test-log_tcp_complete-core" : ["admin"],
+            "test-log_tcp_complete-end_to_end" : ["admin"],
+            "test-log_tcp_complete-tcp_options" : ["admin"],
+            "test-log_tcp_complete-p2p_stats" : ["admin"],
+            "test-log_tcp_complete-layer7" : ["admin"]
+        },
+        "Roles" : {
+            "admin" : [
+                "unauthenticated"
+            ]
+        }
+    },
+
+    "Component": {
+        "Modules": {
+          "mplane.components.ping": {"ip4addr": "1.2.3.4"},
+          "mplane.components.tstat": {"runtimeconf": "conf/runtime.conf"}
+        },
+
+        "Listener": {
+            "port": "8890",
+            "interfaces": []
+        },
+        
+        "scheduler_max_results": "20"
+    }
+}

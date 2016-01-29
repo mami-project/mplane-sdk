@@ -24,6 +24,7 @@
 #
 
 import mplane.component
+import mplane.utils
 import json
 import argparse
 
@@ -42,8 +43,7 @@ if __name__ == "__main__":
         config = None
     else:
         # Read the configuration file
-        conf_file = open(mplane.utils.search_path(args.CONF), 'r')
-        config = json.load(conf_file)
+        config = mplane.utils.get_config(args.config)
 
     if config is None:
         component = mplane.component.InitiatorHttpComponent(config)

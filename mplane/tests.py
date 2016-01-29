@@ -31,7 +31,7 @@ import mplane.scheduler
 import tornado.httpserver
 import tornado.ioloop
 import tornado.web
-import configparser
+import json
 import threading
 import urllib3
 import time
@@ -39,6 +39,8 @@ import ssl
 import sys
 import os
 import io
+
+
 
 # FIXME: this entire module abuses package-level variables.
 #        fixing this would be nice but is relatively low priority.
@@ -48,9 +50,9 @@ import io
 ###
 
 conf_dir = os.path.abspath(os.path.join(os.path.dirname(__file__),"..","testdata"))
-conf_file = 'component-test.conf'
+conf_file = 'component-test.json'
 config_path = os.path.join(conf_dir, conf_file)
-config_path_no_tls = os.path.join(conf_dir, "component-test-no-tls.conf")
+config_path_no_tls = os.path.join(conf_dir, "component-test-no-tls.json")
 id_true_role = "org.mplane.Test.Clients.Client-1"
 id_false_role = "Dummy"
 
@@ -443,22 +445,3 @@ def test_split_stmt_list():
     caps.append(cap)
     # using repr as no __eq__ methos is implemented fot capability objects
     assert_equal(repr(res[0]), repr(caps[0]))
-
-
-def test_parse_url():
-    scheme="http"
-    host="www.mplane.org"
-    port="8080"
-    path="/test"
-    url_str = scheme + "://" + host + ":" + port + path
-    mplane_url = urllib3.util.Url(scheme=scheme,
-                                  host=host,
-                                  port=port,
-                                  path=path)
-    assert_equal(mplane.utils.parse_url(mplane_url), url_str)
-    path = "test"
-    mplane_url = urllib3.util.Url(scheme=scheme,
-                                  host=host,
-                                  port=port,
-                                  path=path)
-    assert_equal(mplane.utils.parse_url(mplane_url), url_str)

@@ -122,11 +122,9 @@ def unparse_url(url):
 
 def get_config(config_file):
     """
-    Open a config file, parse it and return a config object.
+    Open a JSON config file, parse it and return a config object.
     """
-    config = configparser.ConfigParser()
-    config.optionxform = str
-    config.read(mplane.utils.search_path(config_file))
-    return config
+    with open(mplane.utils.search_path(config_file)) as f:
+        return json.load(f)
 
 
