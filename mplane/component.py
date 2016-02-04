@@ -50,6 +50,8 @@ except:
 from threading import Thread
 import json
 
+logger = logging.getLogger(__name__)
+
 DEFAULT_MPLANE_PORT = 8890
 SLEEP_QUANTUM = 0.250
 RETRY_QUANTUM = 5
@@ -126,7 +128,7 @@ class BaseComponent(object):
             if service.capability().get_token() == capability.get_token():
                 self.scheduler.remove_service(service)
                 return
-        logging.warning("Component: no service to remove for capability "+repr(capability))
+        logger.warning("Component: no service to remove for capability "+repr(capability))
 
 class ListenerHttpComponent(BaseComponent):
     def __init__(self, config, io_loop=None, as_daemon=False):
@@ -160,7 +162,7 @@ class ListenerHttpComponent(BaseComponent):
         else:
             http_server.listen(self._port)
 
-        logging.info("ListenerHttpComponent running on port " + str(self._port))
+        logger.info("ListenerHttpComponent running on port " + str(self._port))
         comp_t = Thread(target=self.listen_in_background, args=(io_loop,))
         comp_t.setDaemon(as_daemon)
         comp_t.start()
@@ -239,7 +241,7 @@ class DiscoveryHandler(MPlaneHandler):
         self.write("</body></html>")
 
         if no_caps_exposed is True:
-            logging.warning("Discovery: no capabilities available to "+ 
+            logger.warning("Discovery: no capabilities available to "+ 
                             self.tls.extract_peer_identity(self.request)+
                             ", check authorizations")
         self.finish()
@@ -374,7 +376,7 @@ class InitiatorHttpComponent(BaseComponent):
         """
         env = mplane.model.Envelope()
 
-        logging.info("Component: registering my capabilities to "+self.registration_url)
+        logger.info("Component: registering my capabilities to "+self.registration_url)
 
         # try to register capabilities, if URL is unreachable keep trying every 5 seconds
         connected = False
@@ -383,7 +385,7 @@ class InitiatorHttpComponent(BaseComponent):
                 self._client_identity = self.tls.extract_peer_identity(self.registration_url)
                 connected = True
             except:
-                logging.info("Component: client unreachable, will retry in "+str(RETRY_QUANTUM)+" sec.")
+                logger.info("Component: client unreachable, will retry in "+str(RETRY_QUANTUM)+" sec.")
                 sleep(RETRY_QUANTUM)
 
         # If caps is not None, register them
@@ -401,7 +403,7 @@ class InitiatorHttpComponent(BaseComponent):
                     no_caps_exposed = False
 
             if no_caps_exposed is True:
-                logging.warning("Component: no capabilities available to "+ 
+                logger.warning("Component: no capabilities available to "+ 
                                 self._client_identity +", check authorizations")
                 if not self._supervisor:
                     exit(0)
@@ -419,7 +421,7 @@ class InitiatorHttpComponent(BaseComponent):
         # handle response message
 
         if res.status == 200:
-            logging.info("Component: successfully registered to "+self.registration_url)
+            logger.info("Component: successfully registered to "+self.registration_url)
             # FIXME this does not appear to have anything 
             # to do with the protocol specification, see issue #4
             # body = json.loads(res.data.decode("utf-8"))
@@ -431,7 +433,7 @@ class InitiatorHttpComponent(BaseComponent):
             #         print(key + ": Failed (" + body[key]['reason'] + ")")
             # print("")
         else:
-            logging.critical("Capability registration to "+self.registration_url+" failed:"+
+            logger.critical("Capability registration to "+self.registration_url+" failed:"+
                              str(res.status) + " - " + res.data.decode("utf-8"))
 
     def check_for_specs(self):
@@ -446,11 +448,11 @@ class InitiatorHttpComponent(BaseComponent):
             # try to send a request for specifications. If URL is unreachable means that the Supervisor (or Client) has
             # most probably died, so we need to re-register capabilities
             try:
-                logging.info("Polling for specifications at " + self.specification_url)
+                logger.info("Polling for specifications at " + self.specification_url)
                 res = self.send_message(self.specification_url, "GET")
             except Exception as e:
-                logging.warning("Specification poll at " + self.specification_url + "failed :" + repr(e))
-                logging.warning("Attempting reregistration")
+                logger.warning("Specification poll at " + self.specification_url + "failed :" + repr(e))
+                logger.warning("Attempting reregistration")
                 self.register_to_client()
 
             if res.status == 200:
@@ -475,11 +477,11 @@ class InitiatorHttpComponent(BaseComponent):
             # not registered on supervisor, need to re-register
             # FIXME what's 428 for? See issue #4
             elif res.status == 428:
-                logging.warning("Specification poll got 428, attempting reregistration")
+                logger.warning("Specification poll got 428, attempting reregistration")
                 self.register_to_client()
 
             else:
-                logging.critical("Specification poll to "+self.specification_url+" failed:"+
+                logger.critical("Specification poll to "+self.specification_url+" failed:"+
                                  str(res.status) + " - " + res.data.decode("utf-8"))
  
             sleep(self.idle_time)
@@ -498,7 +500,7 @@ class InitiatorHttpComponent(BaseComponent):
         # check if job is completed
         if (job.finished() is not True and
                 job.failed() is not True):
-            logging.debug("Component: not returning partial result (%s len: %d, label: %s)" 
+            logger.debug("Component: not returning partial result (%s len: %d, label: %s)" 
                           % (type(reply).__name__, len(reply), reply.get_label()))
             return
 
@@ -509,10 +511,10 @@ class InitiatorHttpComponent(BaseComponent):
         label = reply.get_label()
 
         if res.status == 200:
-            logging.info("posted "+ repr(reply) +
+            logger.info("posted "+ repr(reply) +
                          " to "+self._result_url[reply.get_token()])
         else:
-            logging.critical("Result post to "+self._result_url[reply.get_token()]+" failed:"+
+            logger.critical("Result post to "+self._result_url[reply.get_token()]+" failed:"+
                                  str(res.status) + " - " + res.data.decode("utf-8"))
 
     def send_message(self, url_or_str, method, msg=None):

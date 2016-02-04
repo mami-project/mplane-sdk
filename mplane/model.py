@@ -330,6 +330,12 @@ import os
 from mplane.utils import normalize_path
 
 #######################################################################
+# logging
+#######################################################################
+
+logger = logging.getLogger(__main__)
+
+#######################################################################
 # String constants for protocol framing
 #######################################################################
 
@@ -443,7 +449,6 @@ _dur_seclabel = ( (86400, 'd'),
 
 _innerwhen_pat = '\{ (.*?) \}'
 _innerwhen_re = re.compile(_innerwhen_pat)
-
 
 def parse_time(valstr):
     if valstr is None:
@@ -1482,7 +1487,7 @@ class Registry(object):
         self._elements[elem.name()] = elem
 
     def _include_registry(self, other_registry):
-        logging.info("Registry: "+self._uri+" includes "+other_registry._uri)
+        logger.info("Registry: "+self._uri+" includes "+other_registry._uri)
         for elem in other_registry._elements.values():
             self._add_element(elem)
 
@@ -1588,7 +1593,7 @@ def preload_registry(filename=None):
     global _registries
     preloaded = Registry(filename=filename)
     _registries[preloaded.uri()] = preloaded
-    logging.info("Registry: preloaded "+preloaded.uri()+" from "+filename)
+    logger.info("Registry: preloaded "+preloaded.uri()+" from "+filename)
 
 def registry_for_uri(uri):
     """
@@ -1617,7 +1622,7 @@ def initialize_registry(uri=REGURI_DEFAULT):
     """
     global _base_registry
     _base_registry = registry_for_uri(uri)
-    logging.info("Registry: using "+uri)
+    logger.info("Registry: using "+uri)
 
 def element(name, reguri=None):
     """

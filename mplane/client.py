@@ -56,6 +56,8 @@ DEFAULT_REGISTRATION_PATH = "register/capability"
 DEFAULT_SPECIFICATION_PATH = "show/specification"
 DEFAULT_RESULT_PATH = "register/result"
 
+logger = logging.getLogger(__name__)
+
 class BaseClient(object):
     """
     Core implementation of a generic programmatic client.
@@ -745,7 +747,7 @@ class HttpListenerClient(BaseClient):
         the optional callback_when parameter queues a callback spec to
         schedule the next callback.
         """
-        logging.info("Client: will invoke " + cap_tol + " with "  +repr(params))  
+        logger.info("will invoke " + cap_tol + " with "  +repr(params))  
         # grab cap, spec, and identity
         (cap, spec) = self._spec_for(cap_tol, when, params, relabel)
         identity = self.identity_for(cap.get_token())
@@ -960,12 +962,12 @@ class InteractionsHandler(MPlaneHandler):
                         link = link + self.request.host + self._listenerclient.result_path
                         spec.set_link(link)
 
-                    logging.info("AppendSpec %s" % spec)
+                    logger.info("[fixme] AppendSpec %s" % spec)
                     env.append_message(spec)
                     if isinstance(spec, mplane.model.Specification):
-                        logging.info("Specification " + spec.get_label() + " successfully pulled by " + identity)
+                        logger.info("[fixme] Specification " + spec.get_label() + " successfully pulled by " + identity)
                     else:
-                        logging.info("Interrupt " + spec.get_token() + " successfully pulled by " + identity)
+                        logger.info("[fixme] Interrupt " + spec.get_token() + " successfully pulled by " + identity)
 
                 self._respond_json_text(200, mplane.model.unparse_json(env))
             else:

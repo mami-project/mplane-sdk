@@ -34,6 +34,8 @@ import logging
 import mplane.model
 import mplane.azn
 
+logger = logging.getLogger(__name__)
+
 class Service(object):
     """
     A Service binds some runnable code to an
@@ -126,7 +128,7 @@ class Job(object):
             self.exception = mplane.model.Exception(
                             token=self.specification.get_token(),
                             errmsg=str(e))
-            logging.warning("Got exception in _run(), returning "+str(self.exception))
+            logger.warning("Got exception in _run(), returning "+str(self.exception))
             self._exception_at = datetime.utcnow()
         self._ended_at = datetime.utcnow()
 
@@ -155,15 +157,15 @@ class Job(object):
 
         # start interrupt timer
         if end_delay is not None and not hasattr(self.service, 'relay'):
-            logging.info("Scheduler will interrupt "+repr(self)+" after "+str(end_delay)+" sec")
+            logger.info("Scheduler will interrupt "+repr(self)+" after "+str(end_delay)+" sec")
             threading.Timer(end_delay, self.interrupt).start()
 
         # start start timer
         if start_delay > 0:
-            logging.info("Scheduling "+repr(self)+" after "+str(start_delay)+" sec")
+            logger.info("Scheduling "+repr(self)+" after "+str(start_delay)+" sec")
             threading.Timer(start_delay, self._schedule_now).start()
         else:
-            logging.info("Scheduling "+repr(self)+" immediately")
+            logger.info("Scheduling "+repr(self)+" immediately")
             self._schedule_now()
 
     def interrupt(self):
@@ -276,10 +278,10 @@ class MultiJob(object):
 
         # start start timer
         if start_delay > 0:
-            logging.info("Scheduling "+repr(self._subspec)+" from "+repr(self)+" after "+str(start_delay)+" sec")
+            logger.info("Scheduling "+repr(self._subspec)+" from "+repr(self)+" after "+str(start_delay)+" sec")
             threading.Timer(start_delay, self._schedule_job).start()
         else:
-            logging.info("Scheduling "+repr(self._subspec)+" from "+repr(self)+" immediately")
+            logger.info("Scheduling "+repr(self._subspec)+" from "+repr(self)+" immediately")
             self._schedule_job()
 
     def schedule(self):
@@ -299,7 +301,7 @@ class MultiJob(object):
         # start interrupt timer
         if end_delay is not None:
             threading.Timer(end_delay, self.interrupt).start()
-            logging.info("Scheduler will interrupt "+repr(self)+" after "+str(end_delay)+" sec")
+            logger.info("Scheduler will interrupt "+repr(self)+" after "+str(end_delay)+" sec")
 
         # begin scheduling of all jobs
         self._next_job()
@@ -406,7 +408,7 @@ class Scheduler(object):
             job_key = msg.get_token()
             if job_key in self.jobs:
                 job = self.jobs[job_key]
-                logging.info("Scheduler: interrupting " + job.specification.get_label())
+                logger.info("Scheduler: interrupting " + job.specification.get_label())
                 job.interrupt()
                 reply = job.get_reply()
             else:
@@ -420,7 +422,7 @@ class Scheduler(object):
 
     def add_service(self, service):
         """Add a service to this Scheduler"""
-        logging.info("Scheduler: added "+repr(service))
+        logger.info("Scheduler: added "+repr(service))
         self.services.append(service)
         cap = service.capability()
         self._capability_cache[cap.get_token()] = cap
@@ -457,7 +459,7 @@ class Scheduler(object):
             if specification.fulfills(service.capability()):
                 if self.azn.check(service.capability(), user):
                     # Found. Create a new job.
-                    logging.info("Scheduler: "+repr(service)+" matches "+repr(specification))
+                    logger.info("Scheduler: "+repr(service)+" matches "+repr(specification))
                     if (specification.when().is_repeated() and
                         # the service is not a RelayService from supervisor.py,
                         # handle it as a normal multijob
@@ -477,22 +479,22 @@ class Scheduler(object):
                     job_key = new_job.receipt.get_token()
                     if job_key in self.jobs:
                         # Job already running. Return receipt
-                        logging.info("Scheduler: "+repr(self.jobs[job_key])+" already running")
+                        logger.info("Scheduler: "+repr(self.jobs[job_key])+" already running")
                         return self.jobs[job_key].receipt
 
                     # Keep track of the job and return receipt
                     self.jobs[job_key] = new_job
                     new_job.schedule()
-                    logging.info("Scheduler: Returning "+repr(new_job.receipt))
+                    logger.info("Scheduler: Returning "+repr(new_job.receipt))
                     return new_job.receipt
 
                 # user not authorized to request the capability
-                logging.warning("Capability not authorized: " + repr(specification))
+                logger.warning("Capability not authorized: " + repr(specification))
                 return mplane.model.Exception(token=specification.get_token(),
                             errmsg="Capability not authorized")
 
         # fall-through, no job
-        logging.warning("No service registered for "+repr(specification))
+        logger.warning("No service registered for "+repr(specification))
         return mplane.model.Exception(token=specification.get_token(),
                     errmsg="No service registered for specification")
 
