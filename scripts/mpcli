@@ -25,6 +25,7 @@ import mplane.tls
 import sys
 import cmd
 import traceback
+import logging
 import urllib3
 import argparse
 import configparser
@@ -658,6 +659,9 @@ class ClientShell(cmd.Cmd):
         print("You can try to continue, but client state may be inconsistent.")
 
 if __name__ == "__main__":
+
+    # start logging
+    logging.basicConfig(format='[%(asctime)s] %(levelname)s: %(message)s', level=logging.DEBUG)
 
     parser = argparse.ArgumentParser(description="mPlane generic testing client")
     parser.add_argument('--config', metavar="config-file",

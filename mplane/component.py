@@ -28,6 +28,7 @@ import mplane.model
 import mplane.azn
 import mplane.tls
 import importlib
+import logging
 import tornado.web
 import tornado.httpserver
 from datetime import datetime
@@ -51,6 +52,7 @@ import json
 
 DEFAULT_MPLANE_PORT = 8890
 SLEEP_QUANTUM = 0.250
+RETRY_QUANTUM = 5
 CAPABILITY_PATH_ELEM = "capability"
 SPECIFICATION_PATH_ELEM = "/"
 
@@ -74,37 +76,38 @@ class BaseComponent(object):
                     registry_uri = config["Registries"]["default"]
 
         mplane.model.initialize_registry(registry_uri)
-        print("Base Registry name: %s \n" % registry_uri)
-        print("Base Registry_length: %d \n" %  len(mplane.model.registry_for_uri(registry_uri)))
-
         self.tls = mplane.tls.TlsState(self.config)
         self.scheduler = mplane.scheduler.Scheduler(config)
 
         self._ipaddresses = None  # list of IPs to listen on, if the component is Listener
-        for service in self._services():
-            if config is not None and "Listener" in config["Component"]:
-                if "interfaces" in config["Component"]["Listener"] and config["Component"]["Listener"]["interfaces"]:
-                    self._ipaddresses = config["Component"]["Listener"]["interfaces"]
 
-                    # 'link' construction: if there are multiple IPs to listen on, we have no way to determine
-                    # which will be the correct URI for a client. In this case, let's delegate the construction to the
-                    # request handlers (see DiscoveryHandler._respond_capability())
-                    if len(self._ipaddresses) != 1:
-                        service.set_capability_link("")
+        services = self._load_services()
+
+        # Iterate over services, fixing up link sections
+        if config is not None and "Listener" in config["Component"]:
+            if "interfaces" in config["Component"]["Listener"] and \
+                               config["Component"]["Listener"]["interfaces"]:
+                self._ipaddresses = config["Component"]["Listener"]["interfaces"]
+
+                if len(self._ipaddresses) == 1:
+                    # Only do link fix-up if we have only one IP address. If listening 
+                    # on multiple, need to delegate link fix-up to the request handlers 
+                    # (see DiscoveryHandler._respond_capability())
+                    if "TLS" in config:
+                        link = "https://"
                     else:
-                        if "TLS" in config:
-                            link = "https://"
-                        else:
-                            link = "http://"
-                        link = link + config["Component"]["Listener"]["interfaces"][0] + ":"
-                        link = link + config["Component"]["Listener"]["port"] + SPECIFICATION_PATH_ELEM
-                        service.set_capability_link(link)
-                else:
-                    service.set_capability_link("")
+                        link = "http://"
+                    link += config["Component"]["Listener"]["interfaces"][0] + ":"
+                    link += config["Component"]["Listener"]["port"] + SPECIFICATION_PATH_ELEM
 
+                    for service in services:
+                        service.set_capability_link(link)
+
+        # Now add all the services to the scheduler
+        for service in services:
             self.scheduler.add_service(service)
 
-    def _services(self):
+    def _load_services(self):
         services = []
         if self.config is not None:
             # load all the modules that are present in the 'Modules' section
@@ -123,7 +126,7 @@ class BaseComponent(object):
             if service.capability().get_token() == capability.get_token():
                 self.scheduler.remove_service(service)
                 return
-        print("No such service with label " + capability.get_label())
+        logging.warning("Component: no service to remove for capability "+repr(capability))
 
 class ListenerHttpComponent(BaseComponent):
     def __init__(self, config, io_loop=None, as_daemon=False):
@@ -157,7 +160,7 @@ class ListenerHttpComponent(BaseComponent):
         else:
             http_server.listen(self._port)
 
-        print("ListenerHttpComponent running on port " + str(self._port))
+        logging.info("ListenerHttpComponent running on port " + str(self._port))
         comp_t = Thread(target=self.listen_in_background, args=(io_loop,))
         comp_t.setDaemon(as_daemon)
         comp_t.start()
@@ -236,8 +239,9 @@ class DiscoveryHandler(MPlaneHandler):
         self.write("</body></html>")
 
         if no_caps_exposed is True:
-                print("\nNo Capabilities are being exposed to " + self.tls.extract_peer_identity(self.request) +
-                      ", check permissions in config file")
+            logging.warning("Discovery: no capabilities available to "+ 
+                            self.tls.extract_peer_identity(self.request)+
+                            ", check authorizations")
         self.finish()
 
     def _respond_capability(self, key):
@@ -361,7 +365,6 @@ class InitiatorHttpComponent(BaseComponent):
         self._callback_lock = threading.Lock()
 
         # periodically poll the Client/Supervisor for Specifications
-        print("Checking for Specifications...")
         t = Thread(target=self.check_for_specs)
         t.start()
 
@@ -371,6 +374,8 @@ class InitiatorHttpComponent(BaseComponent):
         """
         env = mplane.model.Envelope()
 
+        logging.info("Component: registering my capabilities to "+self.registration_url)
+
         # try to register capabilities, if URL is unreachable keep trying every 5 seconds
         connected = False
         while not connected:
@@ -378,8 +383,8 @@ class InitiatorHttpComponent(BaseComponent):
                 self._client_identity = self.tls.extract_peer_identity(self.registration_url)
                 connected = True
             except:
-                print("Client/Supervisor unreachable. Retrying connection in 5 seconds")
-                sleep(5)
+                logging.info("Component: client unreachable, will retry in "+str(RETRY_QUANTUM)+" sec.")
+                sleep(RETRY_QUANTUM)
 
         # If caps is not None, register them
         if caps is not None:
@@ -396,16 +401,15 @@ class InitiatorHttpComponent(BaseComponent):
                     no_caps_exposed = False
 
             if no_caps_exposed is True:
-                if self.config is None:
-                    print("\nNo Capabilities loaded, run again this script with the --config parameter")
-                else:
-                    print("\nNo Capabilities are being exposed to " + self._client_identity +
-                          ", check permissions in config file. Exiting")
-                if self._supervisor is False:
+                logging.warning("Component: no capabilities available to "+ 
+                                self._client_identity +", check authorizations")
+                if not self._supervisor:
                     exit(0)
 
             # add callback capability to the list
-            callback_cap = mplane.model.Capability(label="callback", when = "now ... future", token = self._callback_token)
+            # FIXME NOOO see issue #3
+            callback_cap = mplane.model.Capability(label="callback", 
+                when = "now ... future", token = self._callback_token)
             
             env.append_message(callback_cap)
 
@@ -413,18 +417,22 @@ class InitiatorHttpComponent(BaseComponent):
         res = self.send_message(self.registration_url, "POST", env)
 
         # handle response message
+
         if res.status == 200:
-            body = json.loads(res.data.decode("utf-8"))
-            print("\nCapability registration outcome:")
-            for key in body:
-                if body[key]['registered'] == "ok":
-                    print(key + ": Ok")
-                else:
-                    print(key + ": Failed (" + body[key]['reason'] + ")")
-            print("")
+            logging.info("Component: successfully registered to "+self.registration_url)
+            # FIXME this does not appear to have anything 
+            # to do with the protocol specification, see issue #4
+            # body = json.loads(res.data.decode("utf-8"))
+            # print("\nCapability registration outcome:")
+            # for key in body:
+            #     if body[key]['registered'] == "ok":
+            #         print(key + ": Ok")
+            #     else:
+            #         print(key + ": Failed (" + body[key]['reason'] + ")")
+            # print("")
         else:
-            print("Error registering capabilities, Client/Supervisor said: " + str(res.status) + " - " + res.data.decode("utf-8"))
-            exit(1)
+            logging.critical("Capability registration to "+self.registration_url+" failed:"+
+                             str(res.status) + " - " + res.data.decode("utf-8"))
 
     def check_for_specs(self):
         """
@@ -438,9 +446,11 @@ class InitiatorHttpComponent(BaseComponent):
             # try to send a request for specifications. If URL is unreachable means that the Supervisor (or Client) has
             # most probably died, so we need to re-register capabilities
             try:
+                logging.info("Polling for specifications at " + self.specification_url)
                 res = self.send_message(self.specification_url, "GET")
-            except:
-                print("Client/Supervisor down. Trying to re-register...")
+            except Exception as e:
+                logging.warning("Specification poll at " + self.specification_url + "failed :" + repr(e))
+                logging.warning("Attempting reregistration")
                 self.register_to_client()
 
             if res.status == 200:
@@ -448,6 +458,7 @@ class InitiatorHttpComponent(BaseComponent):
                 env = mplane.model.parse_json(res.data.decode("utf-8"))
                 for spec in env.messages():
                     # handle callbacks
+                    # FIXME NO NO NO see issue #3
                     if spec.get_label() == "callback":
                         self.idle_time = spec.when().timer_delays()[1]
                         break
@@ -462,14 +473,15 @@ class InitiatorHttpComponent(BaseComponent):
                         res = self.send_message(self._result_url[spec.get_token()], "POST", reply)
 
             # not registered on supervisor, need to re-register
+            # FIXME what's 428 for? See issue #4
             elif res.status == 428:
-                print("\nRe-registering capabilities on Client/Supervisor")
+                logging.warning("Specification poll got 428, attempting reregistration")
                 self.register_to_client()
 
             else:
-                print("Request for specifications failed. "
-                      "Client/Supervisor replied with " + str(res.status) + ": " + res.data.decode("utf-8"))
-
+                logging.critical("Specification poll to "+self.specification_url+" failed:"+
+                                 str(res.status) + " - " + res.data.decode("utf-8"))
+ 
             sleep(self.idle_time)
  
     def return_results(self,receipt):
@@ -485,8 +497,9 @@ class InitiatorHttpComponent(BaseComponent):
 
         # check if job is completed
         if (job.finished() is not True and
-            job.failed() is not True):
-            print("Not returning partial result (%s len: %d, label: %s)" % (type(reply).__name__, len(reply), reply.get_label()))
+                job.failed() is not True):
+            logging.debug("Component: not returning partial result (%s len: %d, label: %s)" 
+                          % (type(reply).__name__, len(reply), reply.get_label()))
             return
 
         # send result to the Client/Supervisor
@@ -496,13 +509,11 @@ class InitiatorHttpComponent(BaseComponent):
         label = reply.get_label()
 
         if res.status == 200:
-            if isinstance(reply, mplane.model.Exception):
-                print("Exception for " + reply.get_token() + " successfully returned!")
-                return
-            print("Result for " + label + " successfully returned!")
+            logging.info("posted "+ repr(reply) +
+                         " to "+self._result_url[reply.get_token()])
         else:
-            print("Error returning Result for " + label)
-            print("Client/Supervisor said: " + str(res.status) + " - " + res.data.decode("utf-8"))
+            logging.critical("Result post to "+self._result_url[reply.get_token()]+" failed:"+
+                                 str(res.status) + " - " + res.data.decode("utf-8"))
 
     def send_message(self, url_or_str, method, msg=None):
         # if the URL is empty (meaning that the 'link' section was empty), use the default url for results

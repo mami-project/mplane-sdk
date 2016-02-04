@@ -1482,7 +1482,7 @@ class Registry(object):
         self._elements[elem.name()] = elem
 
     def _include_registry(self, other_registry):
-        logging.info("Registry: "+self._uri+" includes "+other_registry.uri)
+        logging.info("Registry: "+self._uri+" includes "+other_registry._uri)
         for elem in other_registry._elements.values():
             self._add_element(elem)
 

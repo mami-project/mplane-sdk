@@ -30,6 +30,7 @@ results within the mPlane reference component.
 
 from datetime import datetime
 import threading
+import logging
 import mplane.model
 import mplane.azn
 
@@ -72,8 +73,11 @@ class Service(object):
         return self._capability
 
     def set_capability_link(self, link):
-        """Sets the link section in the capability schema"""
-        self._capability.set_link(link)
+        """
+        Sets the capability's link section, if it is not already set
+        """
+        if self._capability.get_link() is None:
+            self._capability.set_link(link)
 
     def __repr__(self):
         return "<Service for "+repr(self._capability)+">"
@@ -122,7 +126,7 @@ class Job(object):
             self.exception = mplane.model.Exception(
                             token=self.specification.get_token(),
                             errmsg=str(e))
-            print("Got exception in _run(), returning "+str(self.exception))
+            logging.warning("Got exception in _run(), returning "+str(self.exception))
             self._exception_at = datetime.utcnow()
         self._ended_at = datetime.utcnow()
 
@@ -151,15 +155,15 @@ class Job(object):
 
         # start interrupt timer
         if end_delay is not None and not hasattr(self.service, 'relay'):
+            logging.info("Scheduler will interrupt "+repr(self)+" after "+str(end_delay)+" sec")
             threading.Timer(end_delay, self.interrupt).start()
-            print("Will interrupt "+repr(self)+" after "+str(end_delay)+" sec")
 
         # start start timer
         if start_delay > 0:
-            print("Scheduling "+repr(self)+" after "+str(start_delay)+" sec")
+            logging.info("Scheduling "+repr(self)+" after "+str(start_delay)+" sec")
             threading.Timer(start_delay, self._schedule_now).start()
         else:
-            print("Scheduling "+repr(self)+" immediately")
+            logging.info("Scheduling "+repr(self)+" immediately")
             self._schedule_now()
 
     def interrupt(self):
@@ -272,10 +276,10 @@ class MultiJob(object):
 
         # start start timer
         if start_delay > 0:
-            print("Scheduling "+repr(self._subspec)+" from "+repr(self)+" after "+str(start_delay)+" sec")
+            logging.info("Scheduling "+repr(self._subspec)+" from "+repr(self)+" after "+str(start_delay)+" sec")
             threading.Timer(start_delay, self._schedule_job).start()
         else:
-            print("Scheduling "+repr(self._subspec)+" from "+repr(self)+" immediately")
+            logging.info("Scheduling "+repr(self._subspec)+" from "+repr(self)+" immediately")
             self._schedule_job()
 
     def schedule(self):
@@ -295,7 +299,7 @@ class MultiJob(object):
         # start interrupt timer
         if end_delay is not None:
             threading.Timer(end_delay, self.interrupt).start()
-            print("Will interrupt "+repr(self)+" after "+str(end_delay)+" sec")
+            logging.info("Scheduler will interrupt "+repr(self)+" after "+str(end_delay)+" sec")
 
         # begin scheduling of all jobs
         self._next_job()
@@ -402,14 +406,13 @@ class Scheduler(object):
             job_key = msg.get_token()
             if job_key in self.jobs:
                 job = self.jobs[job_key]
-                print("Interrupting " + job.specification.get_label())
+                logging.info("Scheduler: interrupting " + job.specification.get_label())
                 job.interrupt()
                 reply = job.get_reply()
             else:
                 reply = mplane.model.Exception(token=job_key,
                 errmsg="Unknown job")
         else:
-            print("exception")
             reply = mplane.model.Exception(token=msg.get_token(),
                 errmsg="Unexpected message type")
 
@@ -417,7 +420,7 @@ class Scheduler(object):
 
     def add_service(self, service):
         """Add a service to this Scheduler"""
-        print("Added "+repr(service))
+        logging.info("Scheduler: added "+repr(service))
         self.services.append(service)
         cap = service.capability()
         self._capability_cache[cap.get_token()] = cap
@@ -454,7 +457,7 @@ class Scheduler(object):
             if specification.fulfills(service.capability()):
                 if self.azn.check(service.capability(), user):
                     # Found. Create a new job.
-                    print(repr(service)+" matches "+repr(specification))
+                    logging.info("Scheduler: "+repr(service)+" matches "+repr(specification))
                     if (specification.when().is_repeated() and
                         # the service is not a RelayService from supervisor.py,
                         # handle it as a normal multijob
@@ -474,22 +477,22 @@ class Scheduler(object):
                     job_key = new_job.receipt.get_token()
                     if job_key in self.jobs:
                         # Job already running. Return receipt
-                        print(repr(self.jobs[job_key])+" already running")
+                        logging.info("Scheduler: "+repr(self.jobs[job_key])+" already running")
                         return self.jobs[job_key].receipt
 
                     # Keep track of the job and return receipt
                     self.jobs[job_key] = new_job
                     new_job.schedule()
-                    print("Returning "+repr(new_job.receipt))
+                    logging.info("Scheduler: Returning "+repr(new_job.receipt))
                     return new_job.receipt
 
                 # user not authorized to request the capability
-                print("Not allowed to request this capability: " + repr(specification))
+                logging.warning("Capability not authorized: " + repr(specification))
                 return mplane.model.Exception(token=specification.get_token(),
-                            errmsg="User has no permission to request this capability")
+                            errmsg="Capability not authorized")
 
         # fall-through, no job
-        print("No service for "+repr(specification))
+        logging.warning("No service registered for "+repr(specification))
         return mplane.model.Exception(token=specification.get_token(),
                     errmsg="No service registered for specification")
 

@@ -28,8 +28,12 @@ import mplane.utils
 import json
 import sys
 import argparse
+import logging
 
 if __name__ == "__main__":
+
+    # start logging
+    logging.basicConfig(format='[%(asctime)s] %(levelname)s: %(message)s', level=logging.DEBUG)
 
     global args
     parser = argparse.ArgumentParser(description='mplane component runtime')
@@ -47,5 +51,5 @@ if __name__ == "__main__":
     elif "Initiator" in config["Component"]:
         component = mplane.component.InitiatorHttpComponent(config)
     else:
-        print("Need either a 'Initiator' or 'Listener' under 'Component' in " + args.config)
+        logging.critical("Need either a 'Initiator' or 'Listener' under 'Component' in " + args.config)
 
