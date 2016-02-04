@@ -93,7 +93,6 @@ class BaseClient(object):
 
         # FIXME retoken on token collision with another identity
         token = msg.get_token()
-        print("ADDING capability: %s, existing: %s" % (token, self._capabilities.keys()))
         self._capabilities[token] = msg
         self._capability_timeouts[token] = datetime.utcnow()
 

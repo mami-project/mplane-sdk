@@ -227,11 +227,7 @@ class DiscoveryHandler(MPlaneHandler):
         self.set_header("Content-Type", "text/html")
         self.write("<html><head><title>Capabilities</title></head><body>")
         no_caps_exposed = True
-        print("GO FOR CAPS")
         for key in self.scheduler.capability_keys():
-            print("KEY: ", key, self.scheduler.capability_for_key(key)._label )
-            print("NOINST", not isinstance(self.scheduler.capability_for_key(key), mplane.model.Withdrawal))
-            print("CLASS",self.scheduler.azn.check(self.scheduler.capability_for_key(key), self.tls.extract_peer_identity(self.request)))
             if (not isinstance(self.scheduler.capability_for_key(key), mplane.model.Withdrawal) and
                     self.scheduler.azn.check(self.scheduler.capability_for_key(key),
                                              self.tls.extract_peer_identity(self.request))):
