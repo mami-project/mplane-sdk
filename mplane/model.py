@@ -333,7 +333,7 @@ from mplane.utils import normalize_path
 # logging
 #######################################################################
 
-logger = logging.getLogger(__main__)
+logger = logging.getLogger(__name__)
 
 #######################################################################
 # String constants for protocol framing
