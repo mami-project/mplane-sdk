@@ -43,6 +43,8 @@ import tornado.web
 import tornado.httpserver
 import tornado.ioloop
 
+import logging
+
 CAPABILITY_PATH_ELEM = "capability"
 
 FORGED_DN_HEADER = "Forged-MPlane-Identity"
@@ -58,7 +60,8 @@ class BaseClient(object):
     """
     Core implementation of a generic programmatic client.
     Used for common client state management between
-    Client and ClientListener; use one of these instead.
+    HttpInitiatorClient and HttpListenerClient; 
+    use one of these instead.
 
     """
 
@@ -130,7 +133,6 @@ class BaseClient(object):
 
         # FIXME check identity, exception on mismatch
 
-        print("Capability " + self._capabilities[token].get_label() + " from " + identity + " expired or withdrawn")
         if token in self._capabilities:
             self._remove_capability(token)
         else:
@@ -584,8 +586,7 @@ class HttpInitiatorClient(BaseClient):
             if url.host is not None:
                 pool = self._tls_state.pool_for(url.scheme, url.host, url.port)
             else:
-                print("ConnectionPool not defined")
-                exit(1)
+                raise ValueError("HttpInitiatorClient capability retrieval missing connection pool")
 
         if url.path is not None:
             path = url.path
@@ -744,7 +745,7 @@ class HttpListenerClient(BaseClient):
         the optional callback_when parameter queues a callback spec to
         schedule the next callback.
         """
-        print("INVOKE %s PARAMS %s" % (cap_tol, params))  
+        logging.info("Client: will invoke " + cap_tol + " with "  +repr(params))  
         # grab cap, spec, and identity
         (cap, spec) = self._spec_for(cap_tol, when, params, relabel)
         identity = self.identity_for(cap.get_token())
@@ -823,10 +824,11 @@ class MPlaneHandler(tornado.web.RequestHandler):
             self.write(text)
         self.finish()
 
+# FIXME figure out what this class is for
 class InteractionsHandler(MPlaneHandler):
     """
     Handles the probes that want to register to this supervisor
-    Each capability is registered indipendently
+    Each capability is registered independently
 
     Exposes the specifications, that will be periodically pulled by the
     components
@@ -910,6 +912,7 @@ class InteractionsHandler(MPlaneHandler):
                 self._respond_plain_text(401, "Not authorized")
                 return
 
+    # FIXME noncompliant, see issue #4
     def generate_response(self, env):
         """
         Generate the response for the request containing the capabilities
@@ -926,6 +929,7 @@ class InteractionsHandler(MPlaneHandler):
         response = "{" + response[:-1].replace("\n", "") + "}"
         return response
 
+    # FIXME here's where the 428 comes from, noncompliant, see issue #4
     def get(self):
         """
         Receives GET specification requests
@@ -956,12 +960,12 @@ class InteractionsHandler(MPlaneHandler):
                         link = link + self.request.host + self._listenerclient.result_path
                         spec.set_link(link)
 
-                    print("AppendSpec %s" % spec)
+                    logging.info("AppendSpec %s" % spec)
                     env.append_message(spec)
                     if isinstance(spec, mplane.model.Specification):
-                        print("Specification " + spec.get_label() + " successfully pulled by " + identity)
+                        logging.info("Specification " + spec.get_label() + " successfully pulled by " + identity)
                     else:
-                        print("Interrupt " + spec.get_token() + " successfully pulled by " + identity)
+                        logging.info("Interrupt " + spec.get_token() + " successfully pulled by " + identity)
 
                 self._respond_json_text(200, mplane.model.unparse_json(env))
             else:
