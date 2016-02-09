@@ -225,10 +225,11 @@ class BaseClient(object):
 
     def _handle_receipt(self, msg, identity, token = None):
         if token is not None and msg.get_token() is not token:
-            #If tokens differ, the receipt is a response to another receipt.
-            #Remove the old one, and invoke a capability based on the new one.
-            self._remove_receipt(self._receipts[token])
-            self.invoke_capability(msg.get_label(), msg.when(), msg.parameter_values())
+            # If tokens differ, the receipt is a response to another receipt.
+            # Remove the old one, and invoke a capability based on the new one.
+            if token in self._receipts:
+                self._remove_receipt(self._receipts[token])
+                self.invoke_capability(msg.get_label(), msg.when(), msg.parameter_values())
         else:
             self._add_receipt(msg, identity)
 
