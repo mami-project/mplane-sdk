@@ -178,12 +178,9 @@ class MPlaneHandler(tornado.web.RequestHandler):
     handler to respond with an mPlane Message or an Exception.
 
     """
-    def _respond_message(self, msg, token = None):
+    def _respond_message(self, msg):
         self.set_status(200)
         self.set_header("Content-Type", "application/x-mplane+json")
-        if token:
-            # FIXME why is the token in a request header?
-            self.set_header("mplane-token", token)
         self.write(mplane.model.unparse_json(msg))
         self.finish()
 
@@ -324,8 +321,7 @@ class MessagePostHandler(MPlaneHandler):
                         break
 
             # return reply
-            self._respond_message(reply, job.get_token())
-
+            self._respond_message(reply)
 
 class InitiatorHttpComponent(BaseComponent):
 
@@ -507,7 +503,7 @@ class InitiatorHttpComponent(BaseComponent):
         # send result to the Client/Supervisor
         res = self.send_message(self._result_url[reply.get_token()], "POST", reply)
 
-       # handle response
+        # handle response
         label = reply.get_label()
 
         if res.status == 200:
@@ -527,7 +523,8 @@ class InitiatorHttpComponent(BaseComponent):
         else:
             url = url_or_str
 
-        # if the URL has a different host from the one used for capabilities registration, we need a new connectionPool
+        # if the URL has a different host from the one used for 
+        # capabilities registration, we need a new connectionPool
         if self.pool.is_same_host(mplane.utils.unparse_url(url)):
             pool = self.pool
         else:
