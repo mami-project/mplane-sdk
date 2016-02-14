@@ -1612,7 +1612,7 @@ def registry_for_uri(uri):
 
     return _registries[uri]
 
-def initialize_registry(uri=REGURI_DEFAULT):
+def initialize_registry(uri=None):
     """
     Initializes the mPlane registry from a URI; if no URI is given,
     initializes the registry from the internal core registry.
@@ -1621,6 +1621,8 @@ def initialize_registry(uri=REGURI_DEFAULT):
 
     """
     global _base_registry
+    if uri is None:
+        uri = REGURI_DEFAULT
     _base_registry = registry_for_uri(uri)
     logger.info("Registry: using "+uri)
 
