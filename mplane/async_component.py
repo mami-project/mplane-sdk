@@ -1,14 +1,13 @@
-#!/usr/bin/env python3
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 ##
 # mPlane Software Development Kit
-# Component framework
+# Component Framework
 #
 # (c) 2015 mPlane Consortium (http://www.ict-mplane.eu)
-#     Author: Stefano Pentassuglia <stefano.pentassuglia@ssbprogetti.it>
-#             Brian Trammell <brian@trammell.ch>
-#
-#
+# (c) 2016 MAMI Project (http://mami-project.eu)
+#     Authors: Brian Trammell <brian@trammell.ch>
+#              Stefano Pentassuglia <stefano.pentassuglia@ssbprogetti.it>
+#             
 # This program is free software: you can redistribute it and/or modify it under
 # the terms of the GNU Lesser General Public License as published by the Free
 # Software Foundation, either version 3 of the License, or (at your option) any
@@ -21,7 +20,250 @@
 #
 # You should have received a copy of the GNU General Public License along with
 # this program.  If not, see <http://www.gnu.org/licenses/>.
+
+import asyncio
+import aiohttp
+import logging
+import websockets
+import collections
+
+import mplane.model
+
+logger = logging.getLogger(__name__)
+
+class Service(object):
+    """
+    A Service binds some runnable code to an
+    mplane.model.Capability provided by a component.
+
+    To use services with an mPlane scheduler, inherit from
+    mplane.component.Service or one of its subclasses
+    and implement run().
+
+    """
+    def __init__(self, capability):
+        super(Service, self).__init__()
+        self._capability = capability
+
+    async def run(self, specification):
+        """
+        Coroutine to execute this service, given a specification 
+        which matches the capability. This is called by the scheduler 
+        when the specification's temporal scope is current.
+
+        The implementation must extract its parameters from a given 
+        Specification, and return its result values in a Result 
+        derived therefrom.
+
+        Long-running run() methods should await any blocking call, and
+        periodically yield (await asyncio.sleep()) to allow themselves
+        to be interrupted.
+        """
+        raise NotImplementedError("Cannot instantiate an abstract Service")
+
+    def capability(self):
+        """Returns the capability belonging to this service"""
+        return self._capability
+
+    def set_capability_link(self, link):
+        """
+        Sets the capability's link section, if it is not already set
+        FIXME isn't there a better way to force link sections to point
+        to the right place than having the framework reach down and mess
+        with capabilities? See #16.
+        """
+        if self._capability.get_link() is None:
+            self._capability.set_link(link)
+
+    def __repr__(self):
+        return "<Service for "+repr(self._capability)+">"
+
+# Notes on replacing mplane.scheduler.Job:
+# Job handles (1) scheduling the start of Tasks at some point in the future
+#                 (we can use the runloop for this)
+#             (2) cancellation of Tasks on the receipt of Interrupts
+#                 (we can use the runloop for this, but need to keep a list 
+#                  of pending and running things in Component)
 #
+# After the end of MultiJob, we'll need a way for 
+# a Redemption to trigger a partial Result. 
+# (run() gets a partial-result function it should call before awaiting?)
+# 
+# Actually running services in a ProcessPoolExecutor: 
+# see http://stackoverflow.com/questions/22445054/
+
+class ComponentClientContext:
+    """
+    Represents all the state a Component must keep 
+    for a given Client: pending and running Specifications,
+    Results, and information for re-establishing a connection to the
+    client (for WSClientComponent).
+
+    This class handles keeping all Component state on a per-client
+    basis separate.
+
+    When using TLS client certificates with WebSockets (default),
+    client contexts are identified by peer identity. When no
+    client certificate is available, client contexts are identified
+    by peer IP address.
+
+    """
+
+    def __init__(self, cid):
+        # Store client ID 
+        self._cid = cid
+
+
+        # Not yet running Specifications by token
+        self.pending = {}
+        # Running Specifications by token
+        self.running = {}
+        # Receipts for Specifications by token
+        self.receipts = {}
+        # Partial and finished Results by token
+        self.results = {}
+
+        # Outgoing message queue
+        self.outq = collections.deque()
+
+    def purge_results(self):
+        # FIXME need to specify API and implement;
+        # this method should drop results that were returned
+        # more than N seconds ago, and drop stale results,
+        # i.e. never sent to a client but generated more than
+        # M seconds ago. Add fields to Result to make this happen.
+        pass
+
+    def reply(self, msg):
+        self.outq.push(msg)
+ 
+
+class CommonComponent:
+    def __init__(self, config):
+        # Available services
+        self.services = []
+
+        # Client component contexts by client ID
+        self._ccc = {}
+
+        # Add services
+        pass
+
+    def _client_context(self, cid):
+        """
+        Get a client context for a given client ID,
+        creating a new one if necessary.
+
+        """
+        if cid not in self._ccc:
+            self._ccc[cid] = ComponentClientContext(cid, component)
+        return self._ccc[cid]
+
+    def _invoke(self, ccc, spec):
+        """
+        Invoke a Specification in this client context
+
+        """
+        # Find a matching service
+        service = None
+        for candidate in self.services:
+            if spec.fulfills(candidate.capability()):
+                if self.azn._check(candidate.capability(), user):
+                    service = candidate
+                    break
+
+        if not service:
+            return mplane.model.Exception(token=token, errmsg="no capability matches specification")
+            logger.warning("no capability for "+repr(spec))
+
+        # determine when to schedule it
+
+        # schedule it
+
+        # add to pending or running
+        pass
+
+    def _redeem(self, ccc, msg):
+        """
+        Redeem a Redemption from this client context
+
+        """
+        pass
+
+    def _interrupt(self, ccc, token):
+        """
+        Interrupt a running Specification in this client context
+
+        """
+        pass
+
+    def message_from(jmsg, cid):
+        """
+        Handle a JSON message from a given client ID.
+
+        """
+        # Get client context
+        ccc = self._client_context(cid)
+
+        # Parse message
+        msg = mplane.model.parse_json(jmsg)
+        token = msg.get_token()
+
+        reply = None
+        if isinstance(msg, mplane.model.Specification):
+            if token in ccc.pending or token in ccc.running:
+                # Specification already submitted. Idempotent.
+                reply = ccc.receipts[token]
+            elif token in check_for_specs.results:
+                # Specification already submitted and results are available.
+                reply = ccc.results[token]
+            else:
+                # Specification we know nothing about. Invoke it.
+                # (Note that Redemptions can be used to )
+                reply = self._invoke(ccc, msg)
+        elif isinstance(msg, mplane.model.Redemption):
+            if token in ccc.results:
+                # We have some results. Redeem, and do partial redemption 
+                # according to redemption's temporal scope as appropriate
+                reply = self._redeem(ccc, msg)
+            elif token in ccc.receipts:
+                # We have a receipt. Return it.
+                reply = ccc.receipts[token]
+            else:
+                # We've never seen this redemption before. Try to invoke it?
+                reply = self._invoke(ccc, msg)
+        elif isinstance(msg, mplane.model.Interrupt):
+            if token in ccc.pending or token in ccc.running:
+                # Interrupt.
+                reply = self._interrupt(ccc, token)
+            else:
+                reply = mplane.model.Exception(token=token, errmsg="interrupt for unknown specification")
+                logger.warning(repr(msg)+" for unknown task")
+        else:
+            reply = mplane.model.Exception(token=token, errmsg="bad message type for component")
+            logger.warning("component cannot handle message "+repr(msg))
+
+        # Stick the reply in our outgoing message queue
+        ccc.reply(reply)
+
+
+
+
+class WSServerComponent(CommonComponent):
+    pass
+
+class WSClientComponent(CommonComponent):
+    pass
+
+
+
+#########################################################################
+# Old code down here
+#########################################################################
+
+
+
+
 
 import mplane.utils
 import mplane.model
@@ -184,7 +426,7 @@ def initialize_components_for(config):
     pass
 
 #########################################################################
-# Old code down here
+# Really old code down here
 #########################################################################
 
 
