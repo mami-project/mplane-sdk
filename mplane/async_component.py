@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 class Service(object):
     """
-    A Service binds some runnable code to an
+    A Service binds a coroutine to an
     mplane.model.Capability provided by a component.
 
     To use services with an mPlane scheduler, inherit from
@@ -42,24 +42,7 @@ class Service(object):
 
     """
     def __init__(self, capability):
-        super(Service, self).__init__()
         self._capability = capability
-
-    async def run(self, specification):
-        """
-        Coroutine to execute this service, given a specification 
-        which matches the capability. This is called by the scheduler 
-        when the specification's temporal scope is current.
-
-        The implementation must extract its parameters from a given 
-        Specification, and return its result values in a Result 
-        derived therefrom.
-
-        Long-running run() methods should await any blocking call, and
-        periodically yield (await asyncio.sleep()) to allow themselves
-        to be interrupted.
-        """
-        raise NotImplementedError("Cannot instantiate an abstract Service")
 
     def capability(self):
         """Returns the capability belonging to this service"""
@@ -77,6 +60,40 @@ class Service(object):
 
     def __repr__(self):
         return "<Service for "+repr(self._capability)+">"
+
+class ImmediateService(Service):
+    """
+    An ImmediateService is a Service whose coroutine gets called
+    once per Specification invocation.
+    """
+
+    def __init__(self, capability):
+        super().__init__(capability)
+
+    async def run(self, specification, check_interrupt):
+        """
+        Coroutine to execute this service, given a specification 
+        which matches the capability. This is called by the scheduler 
+        when the specification's temporal scope is current.
+
+        The implementation must run the measurement or query to the end:
+        it extracts its parameters from a given Specification, and returns 
+        its result values in a Result derived therefrom.
+
+        Long-running run() methods should await any blocking call, and
+        periodically yield (await asyncio.sleep()). run() methods should
+        periodically call check_interrupt() to determine whether they have
+        been interrupted, and return a Result if so.
+        """
+        raise NotImplementedError("Cannot instantiate an abstract Service")
+
+class PeriodicService(Service):
+    """
+    An PeriodicService is a longer-running Service whose coroutine gets 
+    called once per period specified in its Specification.
+    """
+    # FIXME work out the details of this
+    pass
 
 # Notes on replacing mplane.scheduler.Job:
 # Job handles (1) scheduling the start of Tasks at some point in the future
@@ -113,13 +130,14 @@ class ComponentClientContext:
         # Store client ID 
         self._cid = cid
 
-
         # Not yet running Specifications by token
         self.pending = {}
         # Running Specifications by token
         self.running = {}
         # Receipts for Specifications by token
         self.receipts = {}
+        # Interrupts by token
+        self.interrupts = {}
         # Partial and finished Results by token
         self.results = {}
 
@@ -146,6 +164,8 @@ class CommonComponent:
         # Client component contexts by client ID
         self._ccc = {}
 
+        self._loop = asyncio.get_event_loop()
+
         # Add services
         pass
 
@@ -159,9 +179,17 @@ class CommonComponent:
             self._ccc[cid] = ComponentClientContext(cid, component)
         return self._ccc[cid]
 
+    def _invoke_inner(self, ccc, spec, service):
+        token = spec.get_token()
+
+        # then schedule the coroutine
+        task = self._loop.create_task(service.run(spec, lambda: token in ccc.interrupts))
+
+        # WORK POINTER do something with the task (a future wrapping the coroutine)
+
     def _invoke(self, ccc, spec):
         """
-        Invoke a Specification in this client context
+        Invoke a Specification in a given client context
 
         """
         # Find a matching service
@@ -173,10 +201,30 @@ class CommonComponent:
                     break
 
         if not service:
-            return mplane.model.Exception(token=token, errmsg="no capability matches specification")
             logger.warning("no capability for "+repr(spec))
+            return mplane.model.Exception(token=token, errmsg="no capability matches specification")
+
+        token = spec.get_token()
 
         # determine when to schedule it
+        if spec.is_schedulable():
+            # Schedulable. Try to do so.
+            (start_delay, end_delay) = spec.get_when().timer_delays()
+            if start_delay is None:
+                # Too late. This is a no-op.
+                # FIXME really an exception?
+                return mplane.model.Exception(token=token, errmsg="specification already expired")
+            
+            # Start the interrupt timer
+            self._loop.call_later(end_delay, lambda: self._interrupt(ccc, token))
+
+            if start_delay == 0:
+                self._invoke_inner(service, spec)
+            else:
+                self._loop.call_later(start_delay, lambda: self._invoke_inner(ccc, spec, service))
+        else:
+            # no need to mess with timers, just run the thing
+            self._invoke_inner(service, spec)
 
         # schedule it
 
@@ -185,9 +233,11 @@ class CommonComponent:
 
     def _redeem(self, ccc, msg):
         """
-        Redeem a Redemption from this client context
+        Given a redemption and a client context, return an
+        appropriate result. 
 
         """
+        #
         pass
 
     def _interrupt(self, ccc, token):
@@ -245,9 +295,6 @@ class CommonComponent:
 
         # Stick the reply in our outgoing message queue
         ccc.reply(reply)
-
-
-
 
 class WSServerComponent(CommonComponent):
     pass
