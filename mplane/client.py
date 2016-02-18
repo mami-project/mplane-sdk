@@ -70,6 +70,7 @@ class BaseClient(object):
     def __init__(self, tls_state, supervisor=False, exporter=None):
         self._tls_state = tls_state
         self.reset()
+        self._ssn = -1
         self._supervisor = supervisor
         if self._supervisor:
             self._exporter = exporter
