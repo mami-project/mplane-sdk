@@ -36,7 +36,7 @@ See [doc/protocol-spec.md](doc/protocol-spec.md) for the mPlane protocol specifi
 
 ## Contents
 
-See [https://fp7mplane.github.io/protocol-ri](https://fp7mplane.github.io/protocol-ri) for Sphinx documentation of the SDK modules. The SDK is made up of several modules:
+See [http://mplane-sdk.readthedocs.org/en/latest/](http://mplane-sdk.readthedocs.org/en/latest/) for Sphinx documentation of the SDK modules. The SDK is made up of several modules:
 
 - `mplane.model`: Information model and JSON representation of mPlane messages.
 - `mplane.scheduler`: Component specification scheduler. Maps capabilities to Python code that implements them (in `Service`) and keeps track of running specifications and associated results (`Job` and `MultiJob`).
