@@ -968,17 +968,3 @@ class InteractionsHandler(MPlaneHandler):
         else:
             self._respond_plain_text(401, "Wrong path for specification requests")
 
-    def post(self):
-        # FIXME verify we still need this?
-        # unwrap json message from body
-        if (self.request.headers["Content-Type"] == "application/x-mplane+json"):
-            env = mplane.model.parse_json(self.request.body.decode("utf-8"))
-        else:
-            self._respond_plain_text(400, "Invalid format")
-            return
-
-        self._listenerclient.handle_message(env,
-                            self._tls.extract_peer_identity(self.request))
-        self._respond_plain_text(200)
-        return
-
