@@ -3080,7 +3080,7 @@ def unparse_json(msg, token_only=False):
                       sort_keys=True, indent=2, separators=(',',': '))
 
 def parse_yaml(ystr):
-    return mplane.model.message_from_dict(yaml.load(ystr))
+    return message_from_dict(yaml.load(ystr))
 
 def unparse_yaml(msg):
     return yaml.dump(dict(msg.to_dict()), default_flow_style=False, indent=4)
