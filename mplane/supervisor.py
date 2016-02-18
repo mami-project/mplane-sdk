@@ -163,7 +163,7 @@ class BaseSupervisor(object):
             if ("Initiator" in self.config["Component"]
                 and "Listener" in self.config["Component"]):
                 raise ValueError("The supervisor component-side cannot be 'Initiator' and 'Listener' simultaneously. "
-                                 "Remove one of them from " + args.config + "[\"Component\"]")
+                                 "Remove one of them from " + self.config + "[\"Component\"]")
 
             # InitiatorComponent
             elif "Initiator" in self.config["Component"]:
