@@ -3107,17 +3107,17 @@ def render(msg):
         if section in d:
             out += "    %-12s(%2u): \n" % (section, len(d[section]))
             for element in d[section]:
-                out += "        %32s: %s\n" % (element, d[section][element])
+                out += "        %24s: %s\n" % (element, d[section][element])
 
     if KEY_RESULTVALUES in d:
         out += "    %-12s(%2u):\n" % (KEY_RESULTVALUES, len(d[KEY_RESULTVALUES]))
         for i, row in enumerate(d[KEY_RESULTVALUES]):
             out += "          result %u:\n" % (i)
             for j, val in enumerate(row):
-                out += "            %32s: %s\n" % (d[KEY_RESULTS][j], val)
+                out += "            %24s: %s\n" % (d[KEY_RESULTS][j], val)
     elif KEY_RESULTS in d:
         out += "    %-12s(%2u):\n" % (KEY_RESULTS, len(d[KEY_RESULTS]))
         for element in d[KEY_RESULTS]:
-            out += "        %s\n" % (element)
+            out += "        %24s\n" % (element)
 
     return out

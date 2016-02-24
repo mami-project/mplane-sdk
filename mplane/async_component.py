@@ -29,6 +29,11 @@ import collections
 import mplane.model
 import mplane.azn
 
+# for test code
+import time
+from datetime import datetime
+
+
 logger = logging.getLogger(__name__)
 
 class Service(object):
@@ -111,7 +116,7 @@ class ComponentClientContext:
         # FIXME how to handle partial results?
 
         # Outgoing message queue
-        self.outq = collections.deque()
+        self.outq = asyncio.Queue()
 
         logger.debug("new client context: "+repr(self))
 
@@ -139,7 +144,7 @@ class ComponentClientContext:
         pass
 
     def reply(self, msg):
-        self.outq.push(msg)
+        self.outq.put_nowait(msg)
 
     def __repr__(self):
         return "ComponentClientContext("+repr(self.cid)+")"
@@ -213,13 +218,13 @@ class CommonComponent:
 
             # Delay start if necessary
             if start_delay == 0:
-                self._invoke_inner(service, spec)
+                self._invoke_inner(ccc, spec, service)
             else:
                 logger.debug("will start in %.2fs: %s" % (start_delay, repr(spec)))
                 self._loop.call_later(start_delay, lambda: self._invoke_inner(ccc, spec, service))
         else:
             # Not schedulable, just run the thing.
-            self._invoke_inner(service, spec)
+            self._invoke_inner(ccc, spec, service)
 
         # Stash and return a receipt
         ccc.receipts[token] = mplane.model.Receipt(specification=spec)
@@ -299,7 +304,7 @@ class ComponentTestService():
 
         # now sleep a little at a time, checking interrupt
         acttime = 0
-        for ignored in range(sleeptime):
+        for ignored in range(reqtime):
             if check_interrupt():
                 break
             await asyncio.sleep(1)
@@ -307,9 +312,14 @@ class ComponentTestService():
 
         # now create and return a result
         end = time.time()
+
         result = mplane.model.Result(specification = specification)
         result.set_result_value("duration.s", acttime)      
-        result.set_when(a=start, b=end)
+        result.set_when(mplane.model.When(a=datetime.fromtimestamp(start), 
+                                          b=datetime.fromtimestamp(end)))
+
+        logger.debug("result is "+repr(result))
+
         return result
 
 def _make_test_component():
