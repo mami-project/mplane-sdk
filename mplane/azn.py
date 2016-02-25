@@ -27,7 +27,7 @@ def Authorization(config=None):
     if config is None:
         return AuthorizationOff()
     else:
-        if config is None or "TLS" not in config:
+        if config is None or "Access" not in config:
             return AuthorizationOff()
         else:
             return AuthorizationOn(config)
