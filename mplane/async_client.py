@@ -21,29 +21,64 @@
 # this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-import mplane.model
-import mplane.utils
-from datetime import datetime
-
-import html.parser
-import urllib3
-
-# FIXME HACK
-# some urllib3 versions let you disable warnings about untrusted CAs,
-# which we use a lot in the project demo. Try to disable warnings if we can.
-try:
-    urllib3.disable_warnings()
-except:
-    pass
-
-from threading import Thread
-import queue
-
-import tornado.web
-import tornado.httpserver
-import tornado.ioloop
-
+import asyncio
 import logging
+import websockets
+import collections
+
+import mplane.model
+import mplane.azn
+import mplane.tls
+
+# NOTE: Link section rewriting should happen on the client side.
+
+class CommonClient:
+    """
+    Core implementation of a generic asynchronous programmatic client. 
+    Keeps track of available capabilities, pending receipts, and
+    recent results from a set of components, and allows the 
+    Used for common component state management for WSClientClient and 
+    WSServerClient.
+
+    """
+
+    def __init__(self, tls_state=None):
+        self._tls_state = tls_state
+        self.reset()
+
+    def reset(self):
+        """
+        Forget everything the client knows about everything. 
+
+        """
+        pass
+
+    def purge_results(self):
+        # FIXME need to specify API and implement;
+        # this method should drop results that were returned
+        # more than N seconds ago, and drop stale results,
+        # i.e. never sent to a client but generated more than
+        # M seconds ago. These should be configuable.
+        # Add fields to Result to make this happen.
+        pass
+
+    def _handle_capability(self, msg, coid):
+        pass
+
+    def _handle_withdrawal(self, msg, coid):
+        pass
+
+    def _handle_receipt(self, msg, coid):
+        pass
+
+    def _handle_result(self, msg, coid):
+        pass
+
+
+
+######################################################################
+# Old Client Code Here
+######################################################################
 
 CAPABILITY_PATH_ELEM = "capability"
 
@@ -74,18 +109,6 @@ class BaseClient(object):
         if self._supervisor:
             self._exporter = exporter
 
-    def reset(self,args=None):
-        self._capabilities = {}
-        self._capability_labels = {}
-        self._capability_identities = {}
-        self._receipt_identities = {}
-        self._receipts = {}
-        self._receipt_labels = {}
-        self._results = {}
-        self._result_labels = {}
-        # structures for capability expiration after timeout
-        self._capability_timeouts = {}
-        self._capabilities_by_identity = {}
 
     def _add_capability(self, msg, identity):
         """
@@ -605,13 +628,6 @@ class HttpInitiatorClient(BaseClient):
                     self.retrieve_capabilities(url=capurl,
                                                urlchain=urlchain + [url],
                                                pool=pool, identity=identity)
-
-
-######################################################################
-# Old Client Code Here
-######################################################################
-
-
 
 class HttpListenerClient(BaseClient):
     """

@@ -29,7 +29,7 @@ import collections
 import mplane.model
 import mplane.azn
 import mplane.tls
-
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -86,19 +86,14 @@ class ComponentClientContext:
     Results, and information for re-establishing a connection to the
     client (for WSClientComponent).
 
-    This class handles keeping all Component state on a per-client
+    This class handles keeping all Component state on a per-Client
     basis separate.
-
-    When using TLS client certificates with WebSockets (default),
-    client contexts are identified by peer identity. When no
-    client certificate is available, client contexts are identified
-    by peer IP address.
 
     """
 
-    def __init__(self, cid):
+    def __init__(self, clid):
         # Store client ID 
-        self.cid = cid
+        self.clid = clid
 
         # Tasks for running Services by token
         self.tasks = {}
@@ -136,16 +131,24 @@ class ComponentClientContext:
         # this method should drop results that were returned
         # more than N seconds ago, and drop stale results,
         # i.e. never sent to a client but generated more than
-        # M seconds ago. Add fields to Result to make this happen.
+        # M seconds ago. These should be configuable.
+        # Add fields to Result to make this happen.
         pass
 
     def reply(self, msg):
         self.outq.put_nowait(msg)
 
     def __repr__(self):
-        return "ComponentClientContext("+repr(self.cid)+")"
+        return "ComponentClientContext("+repr(self.clid)+")"
 
 class CommonComponent:
+    """
+    Core implementation of a generic asynchronous component.
+    Used for common component state management for WSServerComponent 
+    and WSClientComponent.
+
+    """
+
     def __init__(self, config):
         # Client component contexts by client ID
         self._ccc = {}
@@ -173,15 +176,15 @@ class CommonComponent:
                 for service in module.services(**kwargs):
                     services.append(service)
 
-    def _client_context(self, cid):
+    def _client_context(self, clid):
         """
         Get a client context for a given client ID,
         creating a new one if necessary.
 
         """
-        if cid not in self._ccc:
-            self._ccc[cid] = ComponentClientContext(cid)
-        return self._ccc[cid]
+        if clid not in self._ccc:
+            self._ccc[clid] = ComponentClientContext(clid)
+        return self._ccc[clid]
 
     def _invoke_inner(self, ccc, spec, service):
         # schedule the coroutine and stash the task
@@ -199,7 +202,7 @@ class CommonComponent:
         service = None
         for candidate in self.services:
             if spec.fulfills(candidate.capability()):
-                if self.azn.check(candidate.capability(), ccc.cid):
+                if self.azn.check(candidate.capability(), ccc.clid):
                     service = candidate
                     break
 
@@ -288,17 +291,30 @@ class CommonComponent:
 # Websocket server component
 #######################################################################
 
-def websocket_cid(websocket, path=None):
+def websocket_clid(websocket, path=None):
     """
     Get a client ID from the websocket's peer certificate (for wss:// URLs),
     allow the client to provide a client ID on the websocket path 
-    (for ws:// URLs), or default to a client serial number
+    (for ws:// URLs), or default to a UUID for anonymous clients
 
     """ 
-    # FIXME this is clearly wrong
-    logger.debug("websocket connection with path "+path)
 
-    return "foo"
+    # Extract CID from subject common name 
+    # (see https://docs.python.org/3/library/ssl.html#ssl.SSLSocket.getpeercert)
+    # Problem: WebSocketServerProtocol doesn't implement get_extra_info :(
+    #
+    # peercert = websocket.get_extra_info("peercert", default=None)
+    # if peercert:
+    #     for rdn in peercert['subject']:
+    #         if rdn[0][0] == "commonName":
+    #             return rdn[0][1]
+
+    # No peer cert. Extract CID from path
+    if path and path != "/":
+        return path
+
+    # No peer cert and no path. Generate a UUID for an anonymous client
+    return str(uuid.uuid3())
 
 class WSServerComponent(CommonComponent):
     
@@ -318,13 +334,13 @@ class WSServerComponent(CommonComponent):
 
     async def serve(self, websocket, path):
         # get my client context
-        ccc = self._client_context(websocket_cid(websocket, path))
+        ccc = self._client_context(websocket_clid(websocket, path))
 
         try:
             # dump all capabilities the client can use in an envelope
             cap_envelope = mplane.model.Envelope()
             for service in self.services:
-                if self.azn.check(service.capability(), ccc.cid):
+                if self.azn.check(service.capability(), ccc.clid):
                     cap_envelope.append_message(service.capability())
             await websocket.send(mplane.model.unparse_json(cap_envelope))
 
@@ -350,16 +366,22 @@ class WSServerComponent(CommonComponent):
                 else:
                     tx.cancel()
         except websockets.exceptions.ConnectionClosed:
-            logger.debug("connection from "+ccc.cid+" closed")
+            logger.debug("connection from "+ccc.clid+" closed")
 
     def run_forever(self):
         asyncio.get_event_loop().run_until_complete(self._start_server)
         asyncio.get_event_loop().run_forever()
 
     def run_until_shutdown(self):
-        wssvr = asyncio.get_event_loop().run_until_complete(self._start_server)
+        self.wssvr = asyncio.get_event_loop().run_until_complete(self._start_server)
         asyncio.get_event_loop().run_until_complete(self._sde.wait())
-        wssvr.close()
+        self.wssvr.close()
+
+    def start_running(self):
+        self.wssvr = asyncio.get_event_loop().run_until_complete(self._start_server)
+
+    def stop_running(self):
+        self.wssvr.close()
 
     async def shutdown(self):
         logger.debug("signaling shutdown")
@@ -367,7 +389,7 @@ class WSServerComponent(CommonComponent):
 
 
 #######################################################################
-# Websocket client component (sketch)
+# Websocket client component (not yet tested)
 #######################################################################
 
 class WSClientComponent(CommonComponent):
@@ -391,7 +413,7 @@ class WSClientComponent(CommonComponent):
                 # dump all capabilities the client can use in an envelope
                 cap_envelope = mplane.model.Envelope()
                 for service in self.services:
-                    if self.azn.check(service.capability(), ccc.cid):
+                    if self.azn.check(service.capability(), ccc.clid):
                         cap_envelope.append_message(service.capability())
                 await websocket.send(mplane.model.unparse_json(cap_envelope))
 
@@ -415,7 +437,7 @@ class WSClientComponent(CommonComponent):
                     else:
                         tx.cancel()
             except websockets.exceptions.ConnectionClosed:
-                logger.debug("connection to "+ccc.cid+" closed")
+                logger.debug("connection to "+ccc.clid+" closed")
 
 
     def run_until_shutdown(self):

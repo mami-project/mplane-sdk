@@ -55,7 +55,7 @@ def test_basic_component():
     # make a component and a client context
     tc = mplane.async_component.CommonComponent(None)
     tc.services.append(ComponentTestService())
-    ccc = tc._client_context("foo")
+    ccc = tc._client_context("/i_am_citizen_three")
 
     # get a spec and fill it in
     spec = mplane.model.Specification(capability=tc.services[0].capability())
@@ -121,7 +121,7 @@ def test_wsservercomponent_component(delay=60):
     tc.run_until_shutdown()
 
 async def _test_wsservercomponent_client_hello():
-    async with websockets.connect('ws://localhost:8727') as websocket:
+    async with websockets.connect('ws://localhost:8727/i_am_citizen_four') as websocket:
 
         # get capability envelope
         jmsg = await websocket.recv()
