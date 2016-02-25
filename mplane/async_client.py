@@ -606,6 +606,13 @@ class HttpInitiatorClient(BaseClient):
                                                urlchain=urlchain + [url],
                                                pool=pool, identity=identity)
 
+
+######################################################################
+# Old Client Code Here
+######################################################################
+
+
+
 class HttpListenerClient(BaseClient):
     """
     Core implementation of an mPlane JSON-over-HTTP(S) client.

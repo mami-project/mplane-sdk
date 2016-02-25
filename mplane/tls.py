@@ -109,6 +109,15 @@ class TlsState:
         else:
             return None
 
+    def get_ssl_context(self):
+        """
+        Return an ssl.SSLContext object reflecting this TLS context,
+        suitable for use with the asyncio, and websockets modules
+
+        """
+        # FIXME make this actually work
+        return None
+
     def extract_local_identity(self, forged_identity = None):
         """
         Extract an identity from the designated name in an X.509 certificate

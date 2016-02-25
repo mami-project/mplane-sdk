@@ -17,15 +17,18 @@ if __name__ == "__main__":
     # get a component
     tc = mplane.async_component._make_test_component()
 
+    # get a client context
+    ccc = tc._client_context("foo")
+
     # get a spec and set a duration
     spec = mplane.model.Specification(capability=tc.services[0].capability())
     spec.set_parameter_value('duration.s', 10)
 
     # simulate receipt of the specification
-    tc.message_from(mplane.model.unparse_json(spec), "foo")
+    tc.message_from(mplane.model.unparse_json(spec), ccc)
 
     # run until we can get a message
-    res = loop.run_until_complete(tc._ccc['foo'].outq.get())
+    res = loop.run_until_complete(ccc.outq.get())
 
     # print the receipt
     print(mplane.model.render(res))
@@ -42,10 +45,10 @@ if __name__ == "__main__":
         red = mplane.model.Redemption(receipt=res)
 
         # simulate sending it
-        tc.message_from(mplane.model.unparse_json(red), "foo")
+        tc.message_from(mplane.model.unparse_json(red), ccc)
 
         # get the result
-        res = loop.run_until_complete(tc._ccc['foo'].outq.get())
+        res = loop.run_until_complete(ccc.outq.get())
 
         # finish if it's an actual result
         if isinstance(res, mplane.model.Result):

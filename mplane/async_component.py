@@ -28,6 +28,7 @@ import collections
 
 import mplane.model
 import mplane.azn
+import mplane.tls
 
 # for test code
 import time
@@ -72,7 +73,6 @@ class Service(object):
 
     def __repr__(self):
         return "<Service for "+repr(self._capability)+">"
-
 
 # Notes on replacing mplane.scheduler.Job:
 #
@@ -159,11 +159,11 @@ class CommonComponent:
 
         self._loop = asyncio.get_event_loop()
 
-        # FIXME null authorization
-        self.azn = mplane.azn.always_authorized
+        # get an authorization object
+        self.azn = mplane.azn.Authorization(config)
 
-        # FIXME Parse and stash config
-        pass
+        # FIXME load services
+
 
     def _client_context(self, cid):
         """
@@ -230,14 +230,11 @@ class CommonComponent:
         ccc.receipts[token] = mplane.model.Receipt(specification=spec)
         return ccc.receipts[token]
 
-    def message_from(self, jmsg, cid):
+    def message_from(self, jmsg, ccc):
         """
         Handle a JSON message from a given client ID.
 
         """
-        # Get client context
-        ccc = self._client_context(cid)
-
         # Parse message
         msg = mplane.model.parse_json(jmsg)
         token = msg.get_token()
@@ -332,7 +329,49 @@ def _make_test_component():
 #######################################################################
 
 class WSServerComponent(CommonComponent):
-    pass
+    
+    def __init__(self, config):
+        super().__init__(config)
+
+        interface = config["Component"]["WSListener"]["interface"]
+        port = int(config["Component"]["WSListener"]["port"])
+        tls = mplane.tls.TlsState(config)
+        
+        self._start_server = websockets.server.serve(self.serve, interface, port, ssl=tls.get_ssl_context())
+
+    async def serve(websocket, path):
+        # get my client context
+        ccc = self._client_context("foo")
+
+        # dump all capabilities in an envelope
+        cap_envelope = mplane.model.Envelope()
+
+        for service in self.services():
+            if self.azn.check(candidate.capability(), ccc.cid):
+                cap_envelope
+
+
+        # now exchange messages forever
+        while True:
+            rx = asyncio.ensure_future(websocket.recv())
+            tx = asyncio.ensure_future(ccc.outq.get())
+            done, pending = await asyncio.wait([rx, tx], 
+                                return_when=asyncio.FIRST_COMPLETED)
+
+            if rx in done:
+                self.message_from(rx.result(), ccc)
+            else:
+                rx.cancel()
+
+            if tx in done:
+                await websocket.send(tx.result())
+            else:
+                tx.cancel()
+
+    def run_forever():
+        asyncio.get_event_loop().run_until_complete(self._start_server)
+        asyncio.get_event_loop().run_forever()
+
 
 #######################################################################
 # Websocket client component
