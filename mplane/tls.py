@@ -58,6 +58,8 @@ class TlsState:
         # load cert and get DN
         self._identity = self.extract_local_identity(forged_identity)
 
+
+    # PROBABLY DEPRECATED
     @functools.lru_cache()
     def pool_for(self, scheme, host, port):
         """
@@ -90,12 +92,14 @@ class TlsState:
         else:
             raise ValueError("Unsupported scheme "+scheme)
 
+    # ALMOST CERTAINLY DEPRECATED
     def forged_identity(self):
         if not self._keyfile:
             return self._identity
         else:
             return None
 
+    # NO TORNADO MEANS DEPRECATED
     def get_ssl_options(self):
         """
         Get an ssl_options dictionary for this TLS context suitable
@@ -109,6 +113,7 @@ class TlsState:
         else:
             return None
 
+    # WRITE ME PLEASE
     def get_ssl_context(self):
         """
         Return an ssl.SSLContext object reflecting this TLS context,
@@ -118,6 +123,7 @@ class TlsState:
         # FIXME make this actually work
         return None
 
+    # REWRITE ME. Probably call me get_local_identity, and use CommonName.
     def extract_local_identity(self, forged_identity = None):
         """
         Extract an identity from the designated name in an X.509 certificate
@@ -142,6 +148,9 @@ class TlsState:
                 identity = forged_identity
         return identity
 
+    # REWRITE ME. Probably call me get_peer_identity, and use CommonName.
+    # The big question is what to take as input; url_or_req won't work for 
+    # the websockets module
     def extract_peer_identity(self, url_or_req):
         """
         Extract an identity from a Tornado's
