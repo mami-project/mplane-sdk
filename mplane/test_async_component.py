@@ -1,5 +1,6 @@
 import mplane.async_component
 import mplane.model
+import websockets
 import logging
 import asyncio
 import sys
@@ -98,7 +99,7 @@ async def shutdown_after(component, delay):
     await asyncio.sleep(delay)
     await component.shutdown()
 
-def test_wsservercomponent_component():
+def test_wsservercomponent_component(delay=60):
     # initialize environment
     mplane.model.initialize_registry()
     logging.basicConfig(level=logging.DEBUG)
@@ -116,7 +117,7 @@ def test_wsservercomponent_component():
     tc.services.append(ComponentTestService())
 
     # run for 60s
-    loop.create_task(shutdown_after(tc, 60))   
+    loop.create_task(shutdown_after(tc, delay))   
     tc.run_until_shutdown()
 
 async def _test_wsservercomponent_client_hello():
@@ -126,7 +127,7 @@ async def _test_wsservercomponent_client_hello():
         jmsg = await websocket.recv()
         env = mplane.model.parse_json(jmsg)
         caps = [x for x in env.messages()]
-        print(" got "+len(caps)+" capabilities.")
+        print(" got "+str(len(caps))+" capabilities.")
 
         # make a specification and fill it in
         spec = mplane.model.Specification(capability=caps[0])
@@ -146,7 +147,7 @@ async def _test_wsservercomponent_client_hello():
 
         while True:
             # sleep a bit
-            loop.run_until_complete(asyncio.sleep(1))
+            await asyncio.sleep(1)
 
             # make a redemption
             red = mplane.model.Redemption(receipt=res)
