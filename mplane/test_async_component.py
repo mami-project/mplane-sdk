@@ -173,4 +173,8 @@ def test_wsserver_component(delay=30):
 
     # wait for client shutdown
     loop.run_until_complete(client_task)
+
+if __name__ == "__main__":
+    test_wsserver_component()
+
    

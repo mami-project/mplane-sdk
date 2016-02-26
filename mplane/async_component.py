@@ -86,13 +86,11 @@ class ComponentClientContext:
     Results, and information for re-establishing a connection to the
     client (for WSClientComponent).
 
-    This class handles keeping all Component state on a per-Client
-    basis separate.
-
     """
 
-    def __init__(self, clid):
-        # Store client ID 
+    def __init__(self, clid, url=None):
+        # Store connection URL and client identity
+        self.url = url
         self.clid = clid
 
         # Tasks for running Services by token
@@ -109,7 +107,7 @@ class ComponentClientContext:
         # Outgoing message queue
         self.outq = asyncio.Queue()
 
-        logger.debug("new client context: "+repr(self))
+        logger.debug("created: "+repr(self))
 
     def interrupt(self, token):
         """
@@ -139,7 +137,7 @@ class ComponentClientContext:
         self.outq.put_nowait(msg)
 
     def __repr__(self):
-        return "ComponentClientContext("+repr(self.clid)+")"
+        return "ComponentClientContext(%s, %s)" % (repr(self.coid), repr(self.url))
 
 class CommonComponent:
     """
@@ -152,7 +150,6 @@ class CommonComponent:
     def __init__(self, config):
         # Client component contexts by client ID
         self._ccc = {}
-
         self._loop = asyncio.get_event_loop()
 
         # get an authorization object
@@ -176,14 +173,14 @@ class CommonComponent:
                 for service in module.services(**kwargs):
                     services.append(service)
 
-    def _client_context(self, clid):
+    def _client_context(self, clid, url):
         """
         Get a client context for a given client ID,
         creating a new one if necessary.
 
         """
         if clid not in self._ccc:
-            self._ccc[clid] = ComponentClientContext(clid)
+            self._ccc[clid] = ComponentClientContext(clid, url)
         return self._ccc[clid]
 
     def _invoke_inner(self, ccc, spec, service):
@@ -243,13 +240,20 @@ class CommonComponent:
 
     def message_from(self, msg, ccc):
         """
-        Handle a (parsed) message from a given client ID.
+        Handle a (parsed) message from a given client.
 
         """
         token = msg.get_token()
 
         reply = None
-        if (    isinstance(msg, mplane.model.Specification) or 
+        if isinstance(msg, mplane.model.Envelope):
+            for emsg in msg.messages():
+                self.message_from(emsg, ccc)
+            return
+        elif isinstance(msg, mplane.model.Exception):
+            logger.error("exception from "+repr(ccc)+": "+repr(msg))
+            return
+        elif (  isinstance(msg, mplane.model.Specification) or 
                 isinstance(msg, mplane.model.Redemption)):
             if token in ccc.results:
                 # Results are available. Treat as redemption.
@@ -407,7 +411,7 @@ class WSClientComponent(CommonComponent):
         async with websockets.connect(self.url) as websocket:
 
             # get my client context
-            ccc = self._client_context(websocket)
+            ccc = self._client_context(websocket_clid(websocket), self.url)
 
             try:
                 # dump all capabilities the client can use in an envelope
@@ -437,6 +441,7 @@ class WSClientComponent(CommonComponent):
                     else:
                         tx.cancel()
             except websockets.exceptions.ConnectionClosed:
+                # FIXME schedule a reconnection attempt
                 logger.debug("connection to "+ccc.clid+" closed")
 
 
