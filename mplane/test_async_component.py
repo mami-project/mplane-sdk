@@ -96,29 +96,9 @@ def test_basic_component():
     print(mplane.model.render(res))
 
 async def shutdown_after(component, delay):
+    logger.debug("will shutdown after "+str(delay)+"s")
     await asyncio.sleep(delay)
     await component.shutdown()
-
-def test_wsservercomponent_component(delay=60):
-    # initialize environment
-    mplane.model.initialize_registry()
-    logging.basicConfig(level=logging.DEBUG)
-    loop = asyncio.get_event_loop()
-
-    # get a component 
-    tc = mplane.async_component.WSServerComponent({
-            "Component" : {
-                "WSListener" : {
-                    "interface" : "",
-                    "port" : 8727
-                }
-            }
-        })
-    tc.services.append(ComponentTestService())
-
-    # run for 60s
-    loop.create_task(shutdown_after(tc, delay))   
-    tc.run_until_shutdown()
 
 async def _test_wsservercomponent_client_hello():
     async with websockets.connect('ws://localhost:8727/i_am_citizen_four') as websocket:
@@ -165,13 +145,32 @@ async def _test_wsservercomponent_client_hello():
         # print the result
         print(mplane.model.render(res))
 
-def test_wsservercomponent_client():
-
+def test_wsserver_component(delay=30):
     # initialize environment
     mplane.model.initialize_registry()
     logging.basicConfig(level=logging.DEBUG)
     loop = asyncio.get_event_loop()
 
-    # run the client test
-    loop.run_until_complete(_test_wsservercomponent_client_hello())
+    # get a component 
+    tc = mplane.async_component.WSServerComponent({
+            "Component" : {
+                "WSListener" : {
+                    "interface" : "",
+                    "port" : 8727
+                }
+            }
+        })
+    tc.services.append(ComponentTestService())
+
+    # schedule client startup
+    client_task = loop.create_task(_test_wsservercomponent_client_hello())
+
+    # schedule component shutdown after 60s
+    loop.create_task(shutdown_after(tc, delay))   
+
+    # run the component
+    tc.run_until_shutdown()
+
+    # wait for client shutdown
+    loop.run_until_complete(client_task)
    
