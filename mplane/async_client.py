@@ -151,10 +151,27 @@ class CommonClient:
         from that component only; otherwise search all known capabilities.
 
         Creates a specification and schedules it to be sent to the
-        appropriate component. Returns the specification
+        appropriate component. Returns the specification.
         """
 
         pass
+
+    def interrupt(self, spec_tol, coid=None):
+        """
+        Send an interrupt given a specification token or label.
+
+        """
+
+        pass
+
+    def retrieve_result(self, spec_tol, coid=None):
+        """
+        Retrieve a cached result, or resend a redemption if not yet available.
+
+        """
+
+        pass
+
 
 
 class WSClientClient(CommonClient):
