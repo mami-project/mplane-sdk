@@ -101,6 +101,7 @@ async def shutdown_after(component, delay):
     await component.shutdown()
 
 async def _test_wsservercomponent_client_hello():
+    await asyncio.sleep(1)
     async with websockets.connect('ws://localhost:8727/i_am_citizen_four') as websocket:
 
         # get capability envelope

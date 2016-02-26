@@ -137,7 +137,7 @@ class ComponentClientContext:
         self.outq.put_nowait(msg)
 
     def __repr__(self):
-        return "ComponentClientContext(%s, %s)" % (repr(self.coid), repr(self.url))
+        return "ComponentClientContext(%s, %s)" % (repr(self.clid), repr(self.url))
 
 class CommonComponent:
     """
@@ -173,7 +173,7 @@ class CommonComponent:
                 for service in module.services(**kwargs):
                     services.append(service)
 
-    def _client_context(self, clid, url):
+    def _client_context(self, clid, url=None):
         """
         Get a client context for a given client ID,
         creating a new one if necessary.
