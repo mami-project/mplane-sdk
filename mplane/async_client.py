@@ -60,6 +60,9 @@ class ClientComponentContext:
 
         logger.debug("created "+repr(self))
 
+    def send(self, msg):
+        self.outq.put_nowait(msg)
+
     def __repr__(self):
         return "ClientComponentContext(%s, %s)" % (repr(self.coid), repr(self.url))
 
@@ -142,8 +145,66 @@ class CommonClient:
             reply = mplane.model.Exception(token=token, errmsg="bad message type for client")
             logger.warning("client cannot handle message "+repr(msg))
 
+    def capability_for(self, token_or_label, coid=None):
+        """
+        Retrieve the first matching capability given a token or label.
+        If a component identity is given, search for matching capabilities 
+        from that component only; otherwise search all known capabilities.
+
+        """
+        if coid:
+            cccs = [self._component_context(coid)]
+        else:
+            cccs = [self.ccc[k] for k in self._ccc]
+
+        for ccc in self.cccs:
+            if token_or_label in ccc.token_for_label:
+                token = ccc.token_for_label[token_or_label]
+            else:
+                token = token_or_label
+            if token in ccc.capabilities:
+                return (ccc, ccc.capabilities[token])
+
+        raise KeyError("no capability for token or label "+token_or_label)
+
+    def _specification_for(self, cap_tol, when, params, relabel=None, coid=None):
+        """
+        Given a capability token or label, a temporal scope, a dictionary
+        of parameters, and an optional new label, derive a specification
+        ready for invocation, and return the capability and specification.
+
+        Used internally by derived classes; use invoke_capability instead.
+
+        """
+        (ccc, cap) = self.capability_for(cap_tol, coid)
+        spec = mplane.model.Specification(capability=cap)
+
+        # set temporal scope
+        spec.set_when(when)
+
+        # fill in parameters
+        # spec.set_single_values() # this is automatic now
+        for pname in spec.parameter_names():
+            if spec.get_parameter_value(pname) is None:
+                if pname in params:
+                    spec.set_parameter_value(pname, params[pname])
+                else:
+                    raise KeyError("missing parameter "+pname)
+
+        # regenerate token based on parameters and temporal scope
+        spec.retoken()
+
+        # generate label
+        if relabel:
+            spec.set_label(relabel)
+        else:
+            spec.set_label(cap.get_label() + "-" + str(self._ssn))
+        self._ssn += 1
+
+        return (ccc, cap, spec)
+
     def invoke_capability(self, cap_tol, when, params, 
-                          coid=None, relabel=None):
+                          relabel=None, coid=None):
         """
         Invoke a capability given a token or label, a temporal scope, 
         and a dictionary mapping parameter names to values. 
@@ -154,7 +215,10 @@ class CommonClient:
         appropriate component. Returns the specification.
         """
 
-        pass
+        (ccc, cap, spec) = self._spec_for(cap_tol, when, params, relabel, coid)
+        spec.validate()
+        ccc.send(spec)
+        return spec        
 
     def interrupt(self, spec_tol, coid=None):
         """
@@ -172,15 +236,73 @@ class CommonClient:
 
         pass
 
-
-
 class WSClientClient(CommonClient):
-    pass
+    """
+    A Client which acts as a WebSockets client
+    (for client-initiated connection establishment). 
+    """
+    def __init__(self, config):
+        super().__init__(config)
+
+        # Shutdown event
+        self._sde = asyncio.Event()
+
+        # Configuration
+        self.url = config["Component"]["WSInitiator"]["url"]
+        self.tls = mplane.tls.TlsState(config)
+
+    async def connect():
+        # connect to the component
+        async with websockets.connect(self.url) as websocket:
+
+            # get my component context
+            # FIXME use URL for now
+            ccc = self._component_context(self.url, self.url) 
+
+            try:
+                # now exchange messages until the shutdown flag is true
+                while True:
+                    if self._sde.is_true():
+                        break
+
+                    rx = asyncio.ensure_future(websocket.recv())
+                    tx = asyncio.ensure_future(ccc.outq.get())
+                    done, pending = await asyncio.wait([rx, tx], 
+                                        return_when=asyncio.FIRST_COMPLETED)
+
+                    if rx in done:
+                        self.message_from(mplane.model.parse_json(rx.result()), ccc)
+                    else:
+                        rx.cancel()
+
+                    if tx in done:
+                        await websocket.send(mplane.model.unparse_json(tx.result()))
+                    else:
+                        tx.cancel()
+            except websockets.exceptions.ConnectionClosed:
+                # FIXME schedule a reconnection attempt
+                logger.debug("connection to "+ccc.coid+" closed") 
+
+    def run_until_shutdown(self):
+        wscli = asyncio.get_event_loop().run_until_complete(self.connect())
+        wscli.close()
+
+    async def shutdown(self):
+        logger.debug("signaling shutdown")
+        self._sde.set()
 
 class WSServerClient(CommonClient):
+    """
+    A Client which acts as a WebSockets server
+    (for component-initiated connection establishment). 
+    """   
     pass
 
 class WSBiClient(CommonClient):
+    """
+    A Client which acts as both a WebSockets server
+    (for component-initiated connection establishment). 
+    """     
     pass
 
 

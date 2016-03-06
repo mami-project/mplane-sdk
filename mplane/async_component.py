@@ -321,6 +321,10 @@ def websocket_clid(websocket, path=None):
     return str(uuid.uuid3())
 
 class WSServerComponent(CommonComponent):
+    """
+    A Component which acts as a WebSockets server
+    (for client-initiated connection establishment). 
+    """
     
     def __init__(self, config):
         super().__init__(config)
@@ -397,6 +401,10 @@ class WSServerComponent(CommonComponent):
 #######################################################################
 
 class WSClientComponent(CommonComponent):
+    """
+    A Component which acts as a WebSockets server
+    (for component-initiated connection establishment). 
+    """
     def __init__(self, config):
         super().__init__(config)
 
@@ -432,12 +440,12 @@ class WSClientComponent(CommonComponent):
                                         return_when=asyncio.FIRST_COMPLETED)
 
                     if rx in done:
-                        self.message_from(rx.result(), ccc)
+                        self.message_from(mplane.model.parse_json(rx.result()), ccc)
                     else:
                         rx.cancel()
 
                     if tx in done:
-                        await websocket.send(tx.result())
+                        await websocket.send(mplane.model.unparse_json(tx.result()))
                     else:
                         tx.cancel()
             except websockets.exceptions.ConnectionClosed:
