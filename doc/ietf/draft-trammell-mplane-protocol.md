@@ -1,8 +1,8 @@
 ---
 title: mPlane Protocol Specification
 abbrev: mPlane Protocol
-docname: draft-trammell-mplane-protocol-00
-date: 2015-8-27
+docname: draft-trammell-mplane-protocol-01
+date: 2016-3-18
 category: info
 ipr: trust200902
 pi: [toc]
@@ -57,13 +57,44 @@ data derived from measurements, and other ancillary data about elements
 of the network. The architecture is defined in terms of relationships
 between components and clients which communicate using the mPlane protocol
 defined in this document.
+
+This revision of the document describes Version 2 of the mPlane protocol. 
+
 --- middle
 
 # Introduction
 
-This document describes the mPlane architecture and protocol, which is designed to provide control and coordination of heterogeneous network measurement tools. It is based heavily on the mPlane project's deliverable 1.4 {{D14}}, and is submitted for the information of the Internet engineering community. {{overview-of-the-mplane-architecture}} gives an overview of the mPlane architecture, {{protocol-information-model}} defines the protocol information model, and {{representations-and-session-protocols}} defines the representations of this data model and session protocols over which mPlane could be supported.
+This document describes the mPlane architecture and protocol, which is
+designed to provide control and coordination of heterogeneous network
+measurement tools. It is based heavily on the mPlane project's deliverable 1.4
+{{D14}}, and is submitted for the information of the Internet engineering
+community. {{overview-of-the-mplane-architecture}} gives an overview of the
+mPlane architecture, {{protocol-information-model}} defines the protocol
+information model, and {{representations-and-session-protocols}} defines the
+representations of this data model and session protocols over which mPlane is
+supported.
 
-Present implementation work is focused on mPlane represented in JSON using HTTPS as a session protocol {{RFC3205}}.  {{workflows-in-https}} demonstrates how mPlane's separation of connection initiation and message initiation works in this environment.
+Present implementation work is focused on mPlane represented in JSON using
+WebSockets {{RFC6455}} as a session protocol. {{workflows-in-websockets}}
+demonstrates how mPlane's separation of connection initiation and message
+initiation works in this environment. Previous versions of the mPlane protocol
+used HTTPS as a session protocol {{RFC3205}}, but the asynchronous message-
+oriented exchanges on which mPlane is built is more suited to a channel-
+oriented session layer such as WebSockets.
+
+This revision of the document describes Version 2 of the mPlane protocol. 
+
+## Changes from Revision -00 (Protocol version 1)
+
+- WebSockets has been added as a session protocol for the mPlane protocol.
+- Redemptions have been expanded to allow temporally-scoped partial redemption of long-running measurements.
+- The "object" primitive type has been added to allow structured objects to be represented directly in mPlane messages using the underlying representation.
+- A number of obsolete features have been deprecated, and removed from the protcol description:
+  - The Indirection message type, as the same functionality is available for all message types using the link section.
+  - HTTPS as a session protocol, as it is a poor fit for mPlane's exchanges
+  - Callback control, as it is no longer needed without the limitations of HTTPS as a session protocol
+  - Repeating measurements, as their functionality has been replaced by partial redemption
+- References to the "core" registry have been removed, as all element registries must in any case be explicitly defined in mPlane capabilities, specifications, and results. An eventual proposed standard mPlane protocol, if such is ever proposed, would refer to an IANA-managed core registry.
 
 # Terminology
 
@@ -128,7 +159,7 @@ This arrangement is shown in schematic form in the diagram below.
        v                     v
   /---------\ indirect \____________/
  < component >-------->| repository |
-  \---------/  export  \____________/
+  \_________/  export  \____________/
 ~~~~~~~~~~
 {: #overview title="General arrangement of entities in the mPlane architecture"}
 
@@ -214,15 +245,11 @@ An entity which implements both the client and component interfaces can be used 
            capability |    |     | specification
                       |    |1    v
                     ________________
-                    |              |
-                    |  component   |
-                  /-|              |-\
+                  .-|   component  |-.
                  |  ----------------  |
                  |     supervisor     |
                  |  ________________  |
-                  \-|              |-/
-                    |    client    |
-                    |              |
+                  \_|    client    |_/
                     ----------------
                       ^   1|     |
            capability |    |     | specification
@@ -236,13 +263,13 @@ An entity which implements both the client and component interfaces can be used 
 {: #simple-supervisor title="Simple mPlane architecture with a supervisor"}
 
 The set of components which respond to specifications from a single supervisor
-is referred to as an mPlane domain. Domain membership is also determined by the issuer of the certificates identifying the clients, components, and supervisor, as detailed in {{access-control-in-https}}. Within a given domain, each client and component connects to only one supervisor. Underlying measurement components and clients may indeed participate in multiple domains, but these are separate entities from the point of view of the architecture. Interdomain measurement is supported by federation among supervisors: a local supervisor delegates measurements in a remote domain to that domain's supervisor.
+is referred to as an mPlane domain. Domain membership is also determined by the issuer of the certificates identifying the clients, components, and supervisor. Within a given domain, each client and component connects to only one supervisor. Underlying measurement components and clients may indeed participate in multiple domains, but these are separate entities from the point of view of the architecture. Interdomain measurement is supported by federation among supervisors: a local supervisor delegates measurements in a remote domain to that domain's supervisor.
 
 <!-- , as shown in the figure below.
 
 ![Federation between supervisors](./federation-architecture.png) -->
 
-In addition to capability composition and specification decomposition, supervisors are responsible for client and component registration and authentication, as well as access control based on  identity information provided by the session protocol (HTTPS, WebSockets, or SSH) in the general case.
+In addition to capability composition and specification decomposition, supervisors are responsible for client and component registration and authentication, as well as access control based on  identity information provided by the session protocol (WebSockets) in the general case.
 
 Since the logic for aggregating control and data for a given application is very specific to that application, note that there is no generic supervisor implementation provided with the mPlane SDK.
 
@@ -252,11 +279,12 @@ The mPlane protocol specified in this document is designed for the exchange of c
 
 For measurements generating large amounts of data (e.g. passive observations of high-rate links, or high-frequency active measurements), mPlane supports indirect export. For indirect export, a client or supervisor directs one component (generally a probe) to send results to another component (generally a repository). This indirect export protocol is completely external to the mPlane protocol; the client must only know that the two components support the same protocol and that the schema of the data produced by the probe matches that accepted by the repository. The typical example consists of passive mPlane-controlled probes exporting volumes of data (e.g., anonymized traces, logs, statistics), to an mPlane-accessible repository out-of-band. The use of out-of-band indirect export is justified to avoid serialization overhead, and to ensure fidelity and reliability of the transfer.
 
-For exploratory analysis of large amounts of data at a repository, it is presumed that clients will have additional backchannel direct access beyond those interactions mediated by mPlane. For instance, a repository backed by a relational database could have a web-based graphical user interface that interacts directly with the database.
+For exploratory analysis of large amounts of data at a repository, it is presumed that clients will have additional back-channel direct access beyond those interactions mediated by mPlane. For instance, a repository backed by a relational database could have a web-based graphical user interface that interacts directly with the database.
+
 
 ## Message Types and Message Exchange Sequences
 
-The basic messages in the mPlane protocol are capabilities, specifications, and results, as described above. The full protocol contains other message types as well. Withdrawals cancel capabilities (i.e., indicate that the component is no longer capable or willing to perform a given measurement) and interrupts cancel specifications (i.e., indicate that the component should stop performing the measurement). Receipts can be given in lieu of results for not-yet completed measurements or queries, and redemptions can be used to retrieve results referred to by a receipt. Indirections can be used by a component to delegate a specification to a different component. Exceptions can be sent by clients or components at any time to signal protocol-level errors to their peers.
+The basic messages in the mPlane protocol are capabilities, specifications, and results, as described above. The full protocol contains other message types as well. Withdrawals cancel capabilities (i.e., indicate that the component is no longer capable or willing to perform a given measurement) and interrupts cancel specifications (i.e., indicate that the component should stop performing the measurement). Receipts can be given in lieu of results for not-yet completed measurements or queries, and redemptions can be used to retrieve results referred to by a receipt. Exceptions can be sent by clients or components at any time to signal protocol-level errors to their peers.
 
 <!-- ![Potential sequences of messages in the mPlane protocol](./message-paths.png) -->
 
@@ -264,9 +292,9 @@ In the nominal sequence, a capability leads to a specification leads to a result
 
 Separate from the sequence of messages, the mPlane protocol supports two connection establishment patterns:
 
-  - Client-initiated in which clients connect directly to components at known, stable, routable URLs. Client-initiated workflows are intended for use between clients and supervisors, for access to repositories, and for access to probes embedded within a network infrastructure.
+  - Client-initiated, in which clients connect directly to components at known, stable URLs. Client-initiated workflows are intended for use between clients and supervisors, for access to repositories, and for access to probes embedded within a network infrastructure.
 
-  - Component-initiated in which components initiate connections to clients. Component-initiated workflows are intended for use between components without stable routable addresses and supervisors, e.g. for small probes on embedded devices, mobile devices, or software probes embedded in browsers on personal computers behind network-address translators (NATs) or firewalls which prevent a client from establishing a connection to them.
+  - Component-initiated, in which components initiate connections to clients. Component-initiated workflows are intended for use between components without stable routable addresses and supervisors, e.g. for small probes on embedded devices, mobile devices, or software probes embedded in browsers on personal computers behind network-address translators (NATs) or firewalls which prevent a client from establishing a connection to them.
 
 Within a given mPlane domain, these patterns can be combined (along with indirect export and direct access) to facilitate complex interactions among clients and components according to the requirements imposed by the application and the deployment of components in the network.
 
@@ -274,11 +302,13 @@ Within a given mPlane domain, these patterns can be combined (along with indirec
 ## Integrating Measurement Tools into mPlane
 
 mPlane's flexibility and the self-description of measurements provided by the capability-specification-result cycle was designed to allow a wide variety of existing measurement tools, both probes and repositories, to be integrated into an mPlane domain. In both cases, the key to integration is to define a capability for each of the measurements the tool can perform or the queries the repository needs to make available within an mPlane domain. Each capability has a set of parameters - information required to run the measurement or the query - and a set of result columns - information which the measurement or query returns.
+
 The parameters and result columns make up the measurement's schema, and are chosen from an extensible registry of elements. Practical details are given in {{designing-measurement-and-repository-schemas}}.
+
 
 ## From Architecture to Protocol Specification
 
-The remainder of this document builds the protocol specification based on this architecture from the bottom up. First, we define the protocol's information model from the element registry through the types of mPlane messages and the sections they are composed of. We then define a concrete representation of this information model using Javascript Object Notation (JSON, {{RFC7159}}), and define bindings to HTTP over TLS as a session protocol. Finally, we show how to construct workflows using the protocol to build up complex measurement infrastructures, and detail the responsibilities of an mPlane supervisor.
+The remainder of this document builds the protocol specification based on this architecture from the bottom up. First, we define the protocol's information model from the element registry through the types of mPlane messages and the sections they are composed of. We then define a concrete representation of this information model using Javascript Object Notation (JSON, {{RFC7159}}), and define bindings to WebSockets {{RFC6455}}} over TLS as a session protocol. 
 
 # Protocol Information Model
 
@@ -303,7 +333,7 @@ An example registry with two elements and no includes follows:
 
 ~~~~~~~~~~
 { "registry-format": "mplane-0",
-  "registry-uri", "http://ict-mplane.eu/registry/core",
+  "registry-uri", "https://example.com/mplane/registry/core",
   "registry-revision": 0,
   "includes": [],
   "elements": [
@@ -319,7 +349,7 @@ An example registry with two elements and no includes follows:
 }
 ~~~~~~~~~~
 
-Fully qualified element names consist of the element's name as an anchor after the URI from which the element came, e.g. `http://ict-mplane.eu/registry/core#full.structured.name`. Elements within the type registry are considered globally equal based on their fully qualified names. However, within a given mPlane message, elements are considered equal based on unqualified names.
+Fully qualified element names consist of the element's name as an anchor after the URI from which the element came, e.g. `https://example.com/mplane/registry/core#full.structured.name`. Elements within the type registry are considered globally equal based on their fully qualified names. However, within a given mPlane message, elements are considered equal based on unqualified names.
 
 ### Structured Element Names
 
@@ -350,22 +380,21 @@ The mPlane protocol supports the following primitive types for elements in the t
 - time: a timestamp, expressed in terms of UTC. The precision of the timestamp is taken to be unambiguous based on its representation.
 - address: an identifier of a network-level entity, including an address family. The address family is presumed to be implicit in the format of the message, or explicitly stored. Addresses may represent specific endpoints or entire networks.
 - url: a uniform resource locator
+- object: a structured object, serialized according to the serialization rules of the underlying representation.
 
 ### Augmented Registry Information
 
-Additional keys beyond prim, desc, and name may appear in an mPlane registry to augment information about each element; these are not presently used by the SDK's information model but may be used by software built around the SDK.
+Additional keys beyond prim, desc, and name may appear in an mPlane registry to augment information about each element. The following additional registry keys have been found useful by some implementors of the protocol:
 
-Elements in the core registry at `http://ict-mplane.eu/registry/core` may contain the following augmented registry keys:
-
-- units: If applicable, units in which the element is expressed; equal to the units part of a structured name if present.
+- units: If applicable, string describing the units in which the element is expressed; equal to the units part of a structured name if present.
 - ipfix-eid: The element ID of the equivalent IPFIX {{RFC7011}} Information Element.
-- ipfix-pen: The SMI Private Enterprise Number of the equivalent IPFIX Information Element, if any.
+- ipfix-pen: The SMI Private Enterprise Number of the equivalent IPFIX {{RFC7011}} Information Element, if any.
 
 ## Message Types {#message-types}
 
 Workflows in mPlane are built around the capability - specification - result cycle. Capabilities, specifications, and results are kinds of statements: a capability is a statement that a component can perform some action (generally a measurement); a specification is a statement that a client would like a component to perform the action advertised in a capability; and a result is a statement that a component measured a given set of values at a given point in time according to a specification.
 
-Other types of messages outside this nominal cycle are referred to as notifications. Types of notifications include Withdrawals, Interrupts, Receipts, Redemptions, Indirections, and Exceptions. These notify clients or components of conditions within the measurement infrastructure itself, as opposed to directly containing information about measurements or observations.
+Other types of messages outside this nominal cycle are referred to as notifications. Types of notifications include Withdrawals, Interrupts, Receipts, Redemptions, and Exceptions. These notify clients or components of conditions within the measurement infrastructure itself, as opposed to directly containing information about measurements or observations.
 
 Messages may also be grouped together into a single envelope message. Envelopes allow multiple messages to be represented within a single message, for example multiple Results pertaining to the same Receipt; and multiple Capabilities or Specifications to be transferred in a single transaction in the underlying session protocol.
 
@@ -373,18 +402,27 @@ The following types of messages are supported by the mPlane protocol:
 
 ### Capability and Withdrawal
 
-A capability is a statement of a component's ability and willingness to perform a specific operation, conveyed from a component to a client. It does not represent a guarantee that the specific operation can or will be performed at a specific point in time.
+A capability is a statement of a component's ability and willingness to
+perform a specific operation, conveyed from a component to a client. It does
+not represent a guarantee that the specific operation can or will be performed
+at a specific point in time.
 
-A withdrawal is a notification of a component's inability or unwillingness to perform a specific operation. It cancels a previously advertised capability. A withdrawal can also be sent in reply to a specification which attempts to invoke a capability no longer offered.
+A withdrawal is a notification of a component's inability or unwillingness to
+perform a specific operation. It cancels a previously advertised capability. A
+withdrawal can also be sent in reply to a specification which attempts to
+invoke a capability no longer offered.
 
 ### Specification and Interrupt
 
 A specification is a statement that a component should perform a specific
-operation, conveyed from a client to a component. It can be
-conceptually viewed as a capability whose parameters have been filled in with
-values.
+operation, conveyed from a client to a component. It can be conceptually
+viewed as a capability whose parameters have been filled in with values.
 
-An interrupt is a notification that a component should stop performing a specific operation, conveyed from client to component. It terminates a previously sent specification. If the specification uses indirect export, the indirect export will simply stop running. If the specification has pending results, those results are returned in response to the interrupt.
+An interrupt is a notification that a component should stop performing a
+specific operation, conveyed from client to component. It terminates a
+previously sent specification. If the specification uses indirect export, the
+indirect export will simply stop running. If the specification has pending
+results, those results are returned in response to the interrupt.
 
 ### Result
 
@@ -412,11 +450,17 @@ A component may optionally add a token section, which can be used
 in future redemptions or interruptions by the client. The content of
 the token is an opaque string generated by the component.
 
-A redemption is sent from a client to a component for a previously received receipt to attempt to retrieve delayed results. It may contain only the token section, or all sections of the received receipt.
+A redemption is sent from a client to a component for a previously received
+receipt to attempt to retrieve delayed results. It may contain only the token
+section, the token and temporal scope, or all sections of the received
+receipt.
 
-### Indirection
-
-An indirection is returned instead of a result by a component to indicate that the client should contact another component for the desired result.
+When the temporal scope of a redemption for a running measurement is different
+than the temporal scope of the original specification, it is treated by the
+component as a partial redemption: all rows resulting from the measurement
+within the specified temporal scope are returned as a result. Otherwise, a
+component responds with a result only when the measurement is complete;
+otherwise, another receipt is returned.
 
 ### Exception
 
@@ -426,9 +470,9 @@ An exception is sent from a client to a component or from a component to a clien
 
 An envelope is used to contain other messages. Message containment is necessary in contexts in which multiple mPlane messages must be grouped into a single transaction in the underlying session protocol. It is legal to group any kind of message, and to mix messages of different types, in an envelope. However, in the current revision of the protocol, envelopes are primarily intended to be used for three distinct purposes:
 
-- To return multiple results for a single receipt or specification if appropriate (e.g., if a specification has run repeated instances of a measurement on a schedule).
 - To group multiple capabilities together within a single message (e.g., all the capabilities a given component has).
-- To group multiple specifications into a single message (e.g., to simultaneously send a measurement specification along with a callback control specification).
+- To return multiple results for a single receipt or specification.
+- To group multiple specifications into a single message.
 
 ## Message Sections
 
@@ -454,7 +498,7 @@ Each message is made up of sections, as described in the subsection below. The f
 ~~~~~~~~~~
 {: #table-messages title="Message Sections for Each Message Type"}
 
-Withdrawals and indirections take the same sections as capabilities; and redemptions
+Withdrawals take the same sections as capabilities; and redemptions
 and interrupts take the same sections as receipts. Exceptions are not shown in this table.
 
 ### Message Type and Verb
@@ -480,13 +524,11 @@ Envelopes have no verb; instead, the value of the `envelope` key is the kind of 
 
 ### Version
 
-The `version` section contains the version of the mPlane protocol to which the message conforms, as an integer serially incremented with each new protocol revision. This section is required in all messages. This document describes version 1 of the protocol.
+The `version` section contains the version of the mPlane protocol to which the message conforms, as an integer serially incremented with each new protocol revision. This section is required in all messages. This document describes version 2 of the protocol.
 
 ### Registry
 
-The `registry` section contains the URL identifying the element registry used by this message, and from which the registry can be retrieved. This section is required in all messages containing element names (statements, and receipts/redemptions/interrupts not using tokens for identification; see the `token` section). The default core registry for mPlane is identified by:
-
-`http://ict-mplane.eu/registry/core`.
+The `registry` section contains the URL identifying the element registry used by this message, and from which the registry can be retrieved. This section is required in all messages containing element names (statements, and receipts/redemptions/interrupts not using tokens for identification; see the `token` section).
 
 ### Label
 
@@ -503,9 +545,9 @@ A temporal scope refers to when a measurement can be run (in a capability), when
 The general form of a temporal scope (in BNF-like syntax) is as follows:
 
 ~~~~~~~~~~
-simple-when = <singleton> |            # A single point in time
-              <range> |                # A range in time
-              <range> ' / ' <duration> # A range with a period
+when = <singleton> |                # A single point in time
+           <range> |                # A range in time
+         <range> ' / ' <duration>   # A range with a period
 
 singleton = <iso8601> | # absolute singleton
             'now'       # relative singleton
@@ -554,91 +596,6 @@ In a specification requesting that a measurement run from a specified point in t
 
 `when: 2017-11-23 18:30:00 ... future`
 
-#### Repeating Measurements
-
-Within specifications, the temporal scope can be extended to support
-repeated measurement. A repeated specification is conceptually
-equivalent to a specification that is sent from the client to the
-component once, then retained at the component and initiated multiple times.
-
-The general form of a temporal scope in a repeated specification is as follows (BNF-like syntax):
-
-~~~~~~~~~~
-repeated-when = # implicit inner scope of now
-                'repeat' <outer-when> |
-                # simple range/period
-                'repeat' <outer-when> '{' <inner-when> '}' |
-                # with crontab
-                'repeat' <range> 'cron' <crontab> '{' <inner-when> '}'
-
-outer-when = <range> ' / ' <duration>
-
-inner-when = 'now' |
-             'now' ' + ' <duration> |
-             'now' ' + ' <duration> / <duration>
-
-crontab = <seconds> <minutes> <hours>
-          <days-of-month> <days-of-week> <months>
-
-seconds = '*' | <seconds-or-minutes-list>
-minutes = '*' | <seconds-or-minutes-list>
-seconds-or-minutes-list = <n> [ ',' <seconds-or-minutes-list> ]
-
-hours = '*' | <hours-list>
-hours-list = <n> [ ',' <hour-list> ] # 0<=n<24
-
-days-of-month = '*' | <days-of-month-list>
-days-of-month-list = <n> [ ',' <days-of-month-list> ] # 0<n<=31
-
-days-of-week = '*' | <days-of-week-list>
-days-of-week-list = <n> [ ',' <days-of-week-list> ] # 0<=n<=7
-                    # 0 = Sunday, 1 = Monday, ..., 7 = Sunday
-
-months = '*' | <months-list>
-months-list = <n> [ ',' <months-list> ] # 0<n<=12
-
-when = <simple-when> | <repeated-when>
-~~~~~~~~~~
-
-A repeated specification consists of an outer temporal specification that governs how often and for how long the specification will repeat, and an inner temporal specification which applies to each individual repetition. The inner temporal specification must always be relative to the current time, i.e. the time of initiated of the repeated specification. If the inner temporal specification is omitted, the specification is presumed to have the relative singleton temporal scope of `now`.
-
-A repeated specification can have a cron-like schedule. In this case
-the outer temporal specification only consists of a
-range scope to determine the time frame in which the cron-like
-schedule is valid. The crontab states the seconds, minutes,
-hours, days of the week, days of the month, and months at which the
-specification will repeat. An asterisk means to repeat at all
-legal values for that field. The specification is only repeated
-if all fields match.
-
-Submitting a repeated specification will still result in a single receipt, or in multiple results. These multiple results, resulting either directly from a single repeated specification, or from the a redemption of a receipt resulting from a repeated specification, are grouped in an envelope message.
-
-For example, a repeated specification to take measurements every second for five minutes, repeating once an hour indefinitely would be:
-
-`when: repeat now ... future / 1h { now + 5m / 1s }`
-
-This repeated specification is equivalent to the repeated submission of the same specification with a temporal scope of `when: { now + 5m / 1s }` once an hour until the specification is cancelled with an interrupt notification.
-
-As a second example, a repeated specification to take measurements every second for five minutes, repeating every half hour within a specific timeframe would be:
-
-`when: repeat 2014-01-01 13:00:00 ... 2014-06-01 14:00:00 / 30m { now + 5m / 1s }`
-
-Likewise, this repeated specification is equivalent to the submission of the same specification with a temporal scope of `when: { now + 5m / 1s }` at `2014-01-01 13:00:00`, `2014-01-01 13:30:00`, `2014-01-01 14:00:00`, `2014-01-01 14:30:00`, and so on =, until (and including) `2014-06-01 13:30:00` and `2014-06-01 14:00:00`.
-
-A repeated specification taking singleton measurements every hour indefinitely with an implicit inner temporal specification:
-
-`when: repeat now ... future / 1h`
-
-equivalent to submitting a specification with the temporal scope `now` hourly forever until interrupted.
-
-A crontab specification which is repeated on the first Monday of each
-month measuring every hour on that day for 5 minutes would be:
-\texttt{when: repeat now ... future cron 0 0 * 1,2,3,4,5,6,7 1 * \{ now + 5m \} }
-
-A repeated specification to take measurements each day
-of the year at midnight would be:
-\texttt{when: repeat now ... future cron 0 0 0 * * * }
-
 ### Parameters {#parameters}
 
 The `parameters` section of a message contains an ordered list of the parameters for a given measurement: values which must be provided by a client to a component in a specification to convey the specifics of the measurement to perform. Each parameter in an mPlane message is a key-value pair, where the key is the name of an element from the element registry. In specifications and results, the value is the value of the parameter. In capabilities, the value is a constraint on the possible values the component will accept for the parameter in a subsequent specification.
@@ -680,15 +637,15 @@ The `export` section contains a URL or partial URL for indirect export. Its mean
 
 If a component can indirectly export or indirectly collect using multiple protocols, each of those protocols must be identified by its own capability; capabilities with an `export` section can only be used by specifications with a matching `export` section.
 
-The special export schema `mplane-https` implies that the exporter will POST mPlane result messages to the collector at the specified URL. All other export schemas are application-specific, and the mPlane protocol implementation is only responsible for ensuring the schemas and protocol identifiers match between collector and exporter.
-
 ### Link
 
-The `link` section contains the URL to which messages in the next step in the workflow (i.e. a specification for a capability, a result or receipt for a specification) can be sent, providing indirection. The link URL must currently have the schema `mplane-https`, and refers to posting of messages via HTTP `POST`.
+The `link` section contains the URL to which messages in the next step in the
+workflow (i.e. a specification for a capability, a result or receipt for a
+specification) can be sent, providing indirection. The link URL must currently
+have the schema `wss`, and refers to the URL to which to initiate a
+connection.
 
-If present in a capability, the client must `POST` specifications for the given capability to the component at the URL given in order to use the capability, as opposed to simply posting them to the known or assumed URL for a component. If present in a specification, the component must `POST` results for the given specification back to the client at the URL given. See the section on workflows below for details.
-
-If present in an indirection message returned for a specification by a component, the client must send the specification to the component at the URL given in the link in order to retrieve results or initiate measurement.
+If present in a capability, the client must send specifications for the given capability to the component at the URL given in order to use the capability, connecting to the URL if no connection is currently established. If present in a specification, the component must send results for the given specification back to the client at the URL given, connecting to the URL if no connection is currently established.
 
 ### Token
 
@@ -740,7 +697,7 @@ When integrating a repository into an mPlane infrastructure, only a subset of th
 
 # Representations and Session Protocols
 
-The mPlane protocol is built atop an abstract data model in order to support multiple representations and session protocols. The canonical representation supported by the present SDK involves JSON {{RFC7159}} objects transported via HTTP {{RFC7230}} over TLS {{RFC5246}} (commonly known as HTTPS).
+The mPlane protocol is built atop an abstract data model in order to support multiple representations and session protocols. The canonical representation supported by the present SDK involves JSON {{RFC7159}} objects transported via Websockets {{RFC6455}} over TLS {{RFC5246}} (known by the "wss" URL schema).
 
 ## JSON representation
 
@@ -769,13 +726,15 @@ Natural and real values are represented in JSON using native JSON representation
 
 Booleans are represented by the reserved words `true` and `false`.
 
-Strings and URLs are represented as JSON strings subject to JSON escaping rules.
+Strings and URLs are represented as JSON strings, subject to JSON escaping rules.
 
 Addresses are represented as dotted quads for IPv4 addresses as they would be in URLs, and canonical IPv6 textual addresses as in section 2.2 of {{RFC4291}} as updated by section 4 of {{RFC5952}}. When representing networks, addresses may be suffixed as in CIDR notation, with a '`/`' character followed by the mask length in bits n, provided that the least significant 32 − n or 128 − n bits of the address are zero, for IPv4 and IPv6 respectively.
 
 Timestamps are represented in {{RFC3339}} and ISO 8601, with two important differences. First, all mPlane timestamps are are expressed in terms of UTC, so time zone offsets are neither required nor supported, and are always taken to be 0. Second, fractional seconds are represented with a variable number of digits after an optional decimal point after the fraction.
 
-### Example mPlane Capabilities and Specifications
+Objects are represented as JSON objects.
+
+### Example mPlane Capabilities and Specifications in JSON
 
 To illustrate how mPlane messages are encoded, we consider first two capabilities for a very simple application -- ping -- as mPlane JSON capabilities. The following capability states that the component can measure ICMP two-way delay from 192.0.2.19 to anywhere on the IPv4 Internet, with a minimum delay between individual pings of 1 second, returning aggregate statistics:
 
@@ -783,7 +742,7 @@ To illustrate how mPlane messages are encoded, we consider first two capabilitie
 {
   "capability": "measure",
   "version":    0,
-  "registry":   "http://ict-mplane.eu/registry/core",
+  "registry":   "https://example.com/mplane/registry/core",
   "label":      "ping-aggregate",
   "when":       "now ... future / 1s",
   "parameters": {"source.ip4":      "192.0.2.19",
@@ -802,7 +761,7 @@ In contrast, the following capability would return timestamped singleton delay m
 {
   "capability": "measure",
   "version":    0,
-  "registry":   "http://ict-mplane.eu/registry/core",
+  "registry":   "https://example.com/mplane/registry/core",
   "label":      "ping-singletons",
   "when":       "now ... future / 1s",
   "parameters": {"source.ip4":      "192.0.2.19",
@@ -818,7 +777,7 @@ A specification is merely a capability with filled-in parameters, e.g.:
 {
   "specification":  "measure",
   "version":        0,
-  "registry":       "http://ict-mplane.eu/registry/core",
+  "registry":       "https://example.com/mplane/registry/core",
   "label":          "ping-aggregate-three-thirtythree",
   "token":          "0f31c9033f8fce0c9be41d4942c276e4",
   "when":           "now + 30s / 1s",
@@ -838,7 +797,7 @@ Results are merely specifications with result values filled in and an absolute t
 {
   "result":   "measure",
   "version":  0,
-  "registry": "http://ict-mplane.eu/registry/core",
+  "registry": "https://example.com/mplane/registry/core",
   "label":    "ping-aggregate-three-thirtythree",
   "token":    "0f31c9033f8fce0c9be41d4942c276e4",
   "when":     2014-08-25 14:51:02.623 ... 2014-08-25 14:51:32.701 / 1s",
@@ -863,7 +822,7 @@ More complex measurements can be modeled by mapping them back to tables with mul
 {
   "capability": "measure",
   "version":    0,
-  "registry":   "http://ict-mplane.eu/registry/core",
+  "registry":   "https://example.com/mplane/registry/core",
   "label":      "traceroute",
   "when":       "now ... future / 1s",
   "parameters": {"source.ip4":      "192.0.2.19",
@@ -882,7 +841,7 @@ with a corresponding specification:
 {
   "specification": "measure",
   "version":    0,
-  "registry":   "http://ict-mplane.eu/registry/core",
+  "registry":   "https://example.com/mplane/registry/core",
   "label":      "traceroute-three-thirtythree",
   "token":      "2f4123588b276470b3641297ae85376a",
   "when":       "now",
@@ -902,7 +861,7 @@ and an example result:
 {
   "result": "measure",
   "version":    0,
-  "registry":   "http://ict-mplane.eu/registry/core",
+  "registry":   "https://example.com/mplane/registry/core",
   "label":      "traceroute-three-thirtythree",
   "token":      "2f4123588b276470b3641297ae85376a,
   "when":       "2014-08-25 14:53:11.019 ... 2014-08-25 14:53:12.765",
@@ -936,10 +895,10 @@ Indirect export to a repository with subsequent query requires three capabilitie
 {
   "capability": "collect",
   "version":    0,
-  "registry":   "http://ict-mplane.eu/registry/core",
+  "registry":   "https://example.com/mplane/registry/core",
   "label":      "ping-aggregate-collect",
   "when":       "past ... future",
-  "export":     "mplane-https://repository.example.com:4343/result",
+  "export":     "wss://repository.example.com:4343/",
   "parameters": {"source.ip4":      "*",
                  "destination.ip4": "*"},
   "results":    ["delay.twoway.icmp.us.min",
@@ -950,16 +909,16 @@ Indirect export to a repository with subsequent query requires three capabilitie
 }
 ~~~~~~~~~~
 
-This capability states that the repository at `https://repository.example.com:4343/result` will accept mPlane result messages matching the specified schema, without any limitations on time. Note that this schema matches that of the export capability provided by the probe:
+This capability states that the repository at `wss://repository.example.com:4343/` will accept mPlane result messages matching the specified schema, without any limitations on time. Note that this schema matches that of the export capability provided by the probe:
 
 ~~~~~~~~~~
 {
   "capability": "measure",
   "version":    0,
-  "registry":   "http://ict-mplane.eu/registry/core",
+  "registry":   "https://example.com/mplane/registry/core",
   "label":      "ping-aggregate-export",
   "when":       "now ... future / 1s",
-  "export":     "mplane-https",
+  "export":     "wss",
   "parameters": {"source.ip4":      "192.0.2.19",
                  "destination.ip4": "*"},
   "results":    ["delay.twoway.icmp.us.min",
@@ -970,16 +929,16 @@ This capability states that the repository at `https://repository.example.com:43
 }
 ~~~~~~~~~~
 
-which differs only from the previous probe capability in that it states that results can be exported via the `mplane-https` protocol. Subsequent queries can be sent to the repository in response to the query capability:
+which differs only from the previous probe capability in that it states that results can be exported via the `wss` protocol. Subsequent queries can be sent to the repository in response to the query capability:
 
 ~~~~~~~~~~
 {
   "capability": "query",
   "version":    0,
-  "registry":   "http://ict-mplane.eu/registry/core",
+  "registry":   "https://example.com/mplane/registry/core",
   "label":      "ping-aggregate-query",
   "when":       "past ... future",
-  "link":       "mplane-https://res.example.com:4343/specification",
+  "link":       "wss://res.example.com:4343/",
   "parameters": {"source.ip4":      "*",
                  "destination.ip4": "*"},
   "results":    ["delay.twoway.icmp.us.min",
@@ -990,161 +949,91 @@ which differs only from the previous probe capability in that it states that res
 }
 ~~~~~~~~~~
 
-## mPlane over HTTPS
+The examples in this section use the following registry:
 
-The default session protocol for mPlane messages is HTTP over TLS with mandatory mutual authentication. This grants confidentiality and integrity to the exchange of mPlane messages through a link security approach, and is transparent to the client. HTTP over TLS was chosen in part because of its ubiquitous implementation on many platforms.
-
-An mPlane component may act either as a TLS server or a TLS client, depending on the workflow. When an mPlane client initiates a connection to a component, it acts as a TLS client, and must present a client certificate, which the component will verify against its allowable clients and map to an internal identity for making access control decisions before proceeding. The component, on the other hand, acts as a TLS server, and must present a server certificate, which the client will verify against its accepted certificates for the component before proceeding. When an mPlane component initiates a connection to a client (or, more commonly, the client interface of a supervisor), this arrangement is reversed: the component acts as a TLS client, the client as a TLS server, and mutual authentication is still mandatory. The mPlane client or component has an identity which is algorithmically derived from it's certificate's Distinguished Name (DN).
-
-mPlane envisions a bidirectional message channel; however, unlike WebSockets and SSH described in the next subsections, HTTPS is not a bidirectional protocol. This makes it necessary to specify mappings between this bidirectional message channel and the sequence of HTTPS requests and responses for each deployment scenario. These  mappings are given in {{workflows-in-https}}. Note that in a given mPlane domain, any or all of these mappings may be used simultaneously.
-
-When sending mPlane messages over HTTPS, the Content-Type of the message indicates the message representation. The MIME Content-Type for mPlane messages using JSON representation over HTTPS is `application/x-mplane+json`. When sending exceptions in HTTP response bodies, the response should contain an appropriate 400 (Client Error) or 500 (Server Error) response code. When sending indirections, the response should contain an appropriate 300 (Redirection) response code. Otherwise, the response should contain response code 200 OK.
-
-### mPlane PKI for HTTPS
-
-The clients and components within an mPlane domain generally share a single certificate issuer, specific to a single mPlane domain. Issuing a certificate to a client or component then grants it membership within the domain. Any client or component within the domain can then communicate with components and clients within that domain. In a domain containing a supervisor, all clients and components within the domain can connect to the supervisor. This is necessary to scale mPlane domains to large numbers of clients and components without needing to specifically configure each client and component identity at the supervisor.
-
-In the case of interdomain federation, where supervisors connect to each other, each supervisor will have its own issuer. In this case, each supervisor must be configured to trust each remote domain's issuer, but only to identify that domain's supervisor. This compartmentalization is necessary to keep one domain from authorizing components and clients within another domain.
-
-### Access Control in HTTPS {#access-control-in-https}
-
-For components with simple authorization policies (e.g., many probes), the ability to establish a connection implies verification of a client certificate valid within the domain, and further implies authorization to continue with any capability offered by the component. Conversely, in component-initiated workflows (see {{component-initiated}}), the ability of a component to connect to the supervisor implies that the supervisor will trust capabilities from that component.
-
-For components with more complex policies (e.g., many repositories), an identity based on the DN of the peer's certificate is mapped to an internal identity on which access control decisions can be made. For access control purposes, the identity of an mPlane client or component is based on the Distinguished Name extracted from the certificate, which uniquely and securely identifies the entity carrying it.
-
-In an mPlane domain containing a supervisor, each component trusts its supervisor completely, and accepts every message that can be identified as coming from the supervisor. Access control enforcement takes place on the supervisor, using a RBAC approach: an identity based on the DN extracted from their certificate of the clients is mapped to a role. Each role has access only to a subset of the whole set of capabilities provided by that to a supervisor, as composed from the capabilities offered by the associated components, according to its privileges. Therefore, any client will only have access to capabilities at the supervisor that it is authorized to execute. The same controls are enforced on specifications.
-
-### Paths in mPlane Link and Export URLs
-
-In general, when connecting to a component for the first time, a client or supervisor will have been configured with a URL from which to retrieve capabilities. Conversely, when connecting to a client or supervisor for the first time, a component will have discovered or been configured with a URL to which to post capabilities. From there, every capability retrieved by a client should have a link section to which to POST specifications, and every specification retrieved by a component should have a link section to which to POST results.
-
-However, in cases in which only an address (and not a full URL) is discoverable, given the ease of differentiating message handing in many web application frameworks by URL, mPlane HTTP clients and components can use the following convention: If a client can only discover a component's address, it should `GET /capabilities` to get that component's capabilities. If a client posts a specification for a capability that does not contain a link to a component, and only has that component's address, it should `POST` the specification to `/specification`. If a component wants to return results to a client and only has the client's address, and the corresponding specification does not have a link, it should `POST` the result to `/result`.
-
-Additional path information can also be used in link and export section URLs to convey an implicit authorization from one component to another via a supervisor. Consider a repository which only wants to accept data from probes which a trusted supervisor has told to export to it. While the probes and repository share a domain by certificate issuer, the repository can further restrict access by placing a cryptographically random token in the export URL in the capability it gives to the supervisor e.g.
-
-`mplane-https://repository.example.com:4343/4e749ecb647c44d8dd6be3fe0986de03bebe/result`.
-
-In this case, only components explicitly delegated by the supervisor can export to the repository. The same pattern can be used to delegate posting of specifications and results securely.
+~~~~~~~~~~
+[TODO]
+~~~~~~~~~~
 
 ## mPlane over WebSockets over TLS
 
-Though not presently implemented by the SDK, the mPlane protocol specification is designed such that it can also use the WebSockets protocol as specified in {{RFC6455}} as a session layer. Once an WebSockets connection is established, mPlane messages can be exchanged bidirectionally over the channel. A client may establish a connection to a component, or a component to a client, as required for a given application.
+The default session protocol for mPlane is WebSockets {{RFC6455}}. Once a
+WebSockets handshake between client and component is complete, messages are
+simply exchanged as outlined in {{message-types}} as JSON objects in
+WebSockets text frames over the channel.
 
-Access control in WebSockets is performed as in the HTTPS case: both clients and components are identified by certificates, identities derived from certificate DN, and domain membership is defined by certificate issuer.
+When WebSockets is used as a session protocol for mPlane, it MUST be used over
+TLS for mPlane message exchanges. Both TLS clients and servers MUST present
+certificates for TLS mutual authentication. mPlane components MUST use the
+certificate presented by the mPlane client to determine the client's identity,
+and therefore the capabilities which it is authorized to invoke. mPlane
+clients MUST use the certificate presented by the mPlane component to
+authenticate the results received. mPlane clients and components MUST NOT use
+network-layer address or name (e.g. derived from DNS PTR queries) information
+to identify peers.
 
-Implementation and further specification of WebSockets as a session layer is a matter for future work. Though WebSockets is a better fit for the bidirectional nature of the mPlane protocol than HTTPS, the latter was chosen as mandatory to implement given the ubiquity of interoperable implementations of it for a diverse set of platforms. We suspect the situation with WebSockets will improve as implementations mature.
+mPlane components may either act as WebSockets servers, for client-initiated
+connection establishment, or as WebSockets clients, for component-initiated
+connection establishment. In either case, it is the responsibility of the
+connection initiator to re-establish connection in case it is lost. In this
+case, the entity acting as WebSockets server SHOULD maintain a queue of
+pending mPlane messages to identified peers to be sent on reconnection.
 
-## mPlane over SSH
+### mPlane PKI for WebSockets
 
-Though not presently implemented by the SDK, the mPlane protocol specification is designed such that it can also use the Secure Shell (SSH) protocol as a session layer. In the SSH binding, a connection initiator (SSH client) identifies itself with an RSA, DSA, or ECDSA public key, which is bound to a specific identity, and the connection responder (SSH server) identifies itself with a host public key. Once an SSH connection is established, mPlane messages can be exchanged bidirectionally over the channel.
+The clients and components within an mPlane domain generally share a single
+certificate issuer, specific to a single mPlane domain. Issuing a certificate
+to a client or component then grants it membership within the domain. Any
+client or component within the domain can then communicate with components and
+clients within that domain. In a domain containing one or more supervisors, all clients
+and components within the domain can connect to a supervisor. This
+deployment pattern can be used to scale mPlane domains to large numbers of
+clients and components without needing to specifically configure each client
+and component identity at the supervisor.
 
-When using SSH as a session layer, clients and components are identified by SSH keys. SSH keys are not very human-readable identifiers, and as such must be mapped to identifiers at each component, client, and supervisor, on which roles can be assigned and access control decisions made. Additionally, SSH keys are not signed by an issuer, so there is no PKI-based definition of membership within a domain as with HTTPS. The need to specifically manage keys for every client and component, and the mappings to identities used in RBAC, will tend to limit the use of SSH to small domains.
+In the case of interdomain federation, where supervisors connect to each
+other, each supervisor will have its own issuer. In this case, each supervisor
+must be configured to trust each remote domain's issuer, but only to identify
+that domain's supervisor. This compartmentalization is necessary to keep one
+domain from authorizing clients within another domain.
 
-Implementation and further specification of SSH as a session layer is a matter for future work. SSH was originally chosen as a possible session protocol for small domains, in order to save the overhead of building a PKI; however, implementation experience has shown that managing SSH keys manually has little administrative overhead advantage over using a small PKI with an algorithmic mapping from subject distinguished names to access control identities.
+### Capability Advertisement for WebSockets
 
-# Workflows in HTTPS {#workflows-in-https}
+When a connection is first established between a client and a component,
+regardless of whether the client or the component initiates the connection,
+the component sends an envelope containing all the capabilities it wishes to
+advertise to the client, based on the client's identity.
 
-As noted above, mPlane protocol supports three patterns of workflow: client-initiated, component-initiated, and indirect export. These workflow patterns can be combined into complex interactions among clients and components in an mPlane infrastructure. In the subsections below, we illustrate these workflows as they operate over HTTPS. Operation over WebSockets or SSH is much simpler: since the session protocol in these cases provides a bidirectional channel for message exchange, so the message sender and message exchange initiator are independent from the connection initiator, and callback control and capability discovery as described here are unnecessary.
+### mPlane Link and Export URLs for WebSockets
 
-## Client-Initiated {#client-initiated}
+Components acting as WebSockets servers (for client-initiated connection
+establishment) are identified in the Link sections of capabilities and
+receipts by URLs with the `wss:` schema. Similarly, clients acting as WebSockets
+servers (for component-initated connection establishment) are identified in
+the Link sections of specifications by URLs with the `wss:` schema.
 
-Client-initiated workflows are appropriate for stationary components, i.e., those with stable, routable addresses, which can therefore act as HTTPS servers. This is generally the case for supervisors, large repositories, repositories acting as gateways to external data sources, and certain large-scale or public probes.
+When the `wss:` schema appears in the export section of the capability, this
+represents the component's willingness to establish a WebSockets connection
+over which mPlane result messages will be pushed. A `wss:` schema URL in a
+specification export section, similarly, directs the component to the
+WebSockets server to push results to.
 
-Here, the client opens an HTTPS connection the the component, and GETs a capability message, or an envelope containing capability messages, at a known URL. It then subsequently uses these capabilities by POSTing a specification, either to a known URL or to the URL given in the `link` section of the capability. The HTTP response to the POSTed specification contains either a result directly, or contains a receipt which can be redeemed later by POSTing a redemption to the component.
+Path information in WebSockets URLs is presently unused by the mPlane
+protocol, but path information MUST be conserved. mPlane clients and
+components acting as WebSockets servers can use path information as they see
+fit, for example to separate client and component workflows on the same server
+(as on a supervisor), to run mPlane and other protocols over WebSockets on the
+same server, and/or to pass cryptographic tokens for additional context
+separation or authorization purposes. Future versions of the mPlane protocol
+may use path information in WebSockets URLs, but this path information will be
+relative to this conserved "base" URL, as opposed to relative to the root.
 
-In a client-initiated workflow with a delayed result, the client is responsible for polling the component with a redemption at the appropriate time. For measurements (i.e. specifications with the verb '`measure`'), this time is known as it is defined by the end of the temporal scope for the specification.
+# Deployment Considerations
 
-Note that in client-initiated workflows, clients may store capabilities from components for later use: there may be a significant delay between retrieval of capabilities and transmission of specifications following from those capabilities. It is not necessary for a client to check to see whether a given capability it has previously retrieved is still valid before sending a specification.
+This section outlines considerations for building larger-scale infrastructures
+from the building blocks defined in this document.
 
-### Capability Discovery
-
-For direct client-initiated workflows, the URL(s) from which to GET capabilities is a client configuration parameter. The client-initiated workflow also allows indirection in capability discovery. Instead of GETting capabilities direct from a component, they can also be retrieved from a capability discovery server containing capabilities for multiple components providing capabilities via client-initiated workflows. These components are then identified by the `link` section of each capability. The capabilities may be grouped in an envelope retrieved from the capability discovery server, or linked to in an HTML object retrieved therefrom.
-
-In this way, a client needs only be configured with a single URL for capability discovery, instead of URLs for each component with which it wants to communicate.
-
-## Component-Initiated {#component-initiated}
-
-Component-initiated workflows are appropriate for components which do not have stable routable addresses (i.e., are behind NATs and/or are mobile), and which are used by clients that do. Common examples of such components are lightweight probes on mobile devices and customer equipment on access networks, interacting directly with a supervisor.
-
-In this case, the usual client-server relationship is reversed. When the component becomes available, it opens an HTTPS connection to the client and POSTs its capabilities to a known, configured URL at the supervisor. The supervisor remembers which capabilities it wishes to use on which components, and prepares specifications for later retrieval by the client.
-
-The component then polls the supervisor, opening HTTPS connections and attempting to GET a specification from a known URL. The client will either respond 404 Not Found if the client has no current specification for the component, or with a specification to run matching a previously POSTed capability. After completing the measurement specified, the component then calls back and POSTs the results to the supervisor at a known URL.
-
-In this case, the component must be configured with the client's URL(s).
-
-### Callback Control
-
-Callback control allows the supervisor to specify to the component when it should call back, in order to allow centralized scheduling of component-initiated workflows, as well as to allow an mPlane infrastructure using component-initiated workflows to scale. Continuous polling of a client by thousands of components would put a network under significant load, and the polling delay introduces a difficult tradeoff between timeliness of specification and polling load. mPlane uses the `callback` verb with component-initiated workflows in order to allow the supervisor fine-grained control over when components will call back.
-
-To use callback control, the component advertises the following capability along with the others it provides:
-
-~~~~~~~~~~
-{
- 'capability': 'callback',
- 'version':    0,
- 'registry':   'http://ict-mplane.eu/registry/core',
- 'when':       'now ... future',
- 'parameters': {},
- 'results':    []
-}
-~~~~~~~~~~
-
-Then, when the component polls the client the first time, it responds with an envelope containing two specifications: the measurement it wants the client to perform, and a callback specification, containing the time at which the client should poll again in the temporal scope; e.g. as follows:
-
-~~~~~~~~~~
-{
- 'specification': 'callback',
- 'version':       0,
- 'registry':      'http://ict-mplane.eu/registry/core',
- 'when':          '2014-09-08 12:40:00.000',
- 'parameters':    {},
- 'results':       []
-}
-~~~~~~~~~~
-
-Note that if the supervisor has no work for the component, it returns a single callback specification as opposed to returning 404. Note that subsequent callback control specification to a component can have different time intervals, allowing a supervisor fine-grained control on a per-component basis of the tradeoff between polling load and response time.
-
-Components implementing component-initiated workflows should support callback control in order to ensure the scalability of large mPlane infrastructures.
-
-## Indirect Export
-
-Many common measurement infrastructures involve a large number of probes exporting large volumes of data to a (much) smaller number of repositories, where data is reduced and analyzed. Since (1) the mPlane protocol is not particularly well-suited to the bulk transfer of data and (2) fidelity is better ensured when minimizing translations between representations, the channel between the probes and the repositories is in this case external to mPlane. This indirect export channel runs either a standard export protocol such as IPFIX, or a proprietary protocol unique to the probe/repository pair. It coordinates an exporter which will produce and export data with a collector which will receive it. All that is necessary is that (1) the client, exporter, and collector agree on a schema to define the data to be transferred and (2) the exporter and collector share a common protocol for export.
-
-Here, we consider a client speaking to an exporter and a collector. The client first receives an export capability from the exporter (with verb `measure` and with a protocol identified in the `export` section) and a collection capability from the collector (with the verb `collect` and with a URL in the `export` section describing where the exporter should export), either via a client-initiated workflow or a capability discovery server. The client then sends a specification to the exporter, which matches the schema and parameter constraints of both the export and collection capabilities, with the collector's URL in the `export` section.
-
-The exporter initiates export to the collector using the specified protocol, and replies with a receipt that can be used to interrupt the export, should it have an indefinite temporal scope. In the meantime, it sends data matching the capability's schema directly to the collector.
-
-This data, or data derived from the analysis thereof, can then be subsequently retrieved by a client using a client-initiated workflow to the collector.
-
-## Error Handling in mPlane Workflows {#error-handling-in-mplane-workflows}
-
-Any component may signal an error to its client or supervisor at any time by
-sending an exception message. While the taxonomy of error messages is at
-this time left up to each individual component, given the weakly imperative
-nature of the mPlane protocol, exceptions should be used
-sparingly, and only to notify components and clients of errors with the
-mPlane infrastructure itself.
-
-It is generally presumed that diagnostic information about errors which may
-require external human intervention to correct will be logged at each
-component; the mPlane exception facility is not intended as a replacement
-for logging facilities (such as syslog).
-
-Specifically, components in component-initiated workflows
-should not use the exception mechanism for common error conditions (e.g.,
-device losing connectivity for small network-edge probes) -- specifications
-sent to such components are expected to be best-effort. Exceptions should
-also not be returned for specifications which would normally not be delayed
-but are due to high load -- receipts should be used in this case, instead.
-Likewise, specifications which cannot be fulfilled because they request the
-use of capabilities that were once available but are no longer should be
-answered with withdrawals.
-
-Exceptions should always be sent in reply to messages sent to
-components or clients which cannot be handled due to a syntactic or semantic
-error in the message itself.
-
-# The Role of the Supervisor
+## The Role of the Supervisor
 
 For simple infrastructures, a set of components may be controlled directly by a client. However, in more complex infrastructures providing support for multiple clients, a supervisor can mediate between clients and components.  From the point of view of the mPlane protocol, a supervisor is merely a combined component and client. The logic binding client and component interfaces within the supervisor is application-specific, as it involves the following operations according to the semantics of each application:
 
@@ -1162,32 +1051,69 @@ The client then initiates a measurement by POSTing a specification to the superv
 
 This simple example illustrates the three main responsibilities of the supervisor, which are described in more detail below.
 
-## Component Registration
+### Component Registration
 
 In order to be able to use components to perform measurements, the supervisor must register the components associated with it. For client-initiated workflows -- large repositories and the address of the components is often a configuration parameter of the supervisor. Capabilities describing the available measurements and queries at large-scale components can even be part of the supervisor's externally managed static configuration, or can be dynamically retrieved and updated from the components or from a capability discovery server.
 
 For component-initiated workflows, components connect to the supervisor and POST capabilities and withdrawals, which requires the supervisor to maintain a set of capabilities associated with a set of components currently part of the mPlane infrastructure it supervises.
 
-## Client Authentication
+### Client Authentication
 
 For many components -- probes and simple repositories -- very simple authentication often suffices, such that any client with a certificate with an issuer recognized as valid is acceptable, and all capabilities are available to. Larger repositories often need finer grained control, mapping specific peer certificates to identities internal to the repository's access control system (e.g. database users).
 
-In an mPlane infrastructure, it is therefore the supervisor's responsability to map client identities to the set of capabilities each client is authorized to access. This mapping is part of the supervisor's configuration.
+In an mPlane infrastructure, it is therefore the supervisor's responsibility to map client identities to the set of capabilities each client is authorized to access. This mapping is part of the supervisor's configuration.
 
-## Capability Composition and Specification Decomposition
+### Capability Composition and Specification Decomposition
 
 The most dominant responsibility of the supervisor is composing capabilities from its subordinate components into aggregate capabilities, and decomposing specifications from clients to more-specific specifications to pass to each component. This operation is always application-specific, as the semantics of the composition and decomposition operations depend on the capabilities available from the components, the granularity of the capabilities to be provided to the clients. It is for this reason that the mPlane SDK does not provide a generic supervisor.
+
+## Indirect Export
+
+Many common measurement infrastructures involve a large number of probes exporting large volumes of data to a (much) smaller number of repositories, where data is reduced and analyzed. Since (1) the mPlane protocol is not particularly well-suited to the bulk transfer of data and (2) fidelity is better ensured when minimizing translations between representations, the channel between the probes and the repositories is in this case external to mPlane. This indirect export channel runs either a standard export protocol such as IPFIX, or a proprietary protocol unique to the probe/repository pair. It coordinates an exporter which will produce and export data with a collector which will receive it. All that is necessary is that (1) the client, exporter, and collector agree on a schema to define the data to be transferred and (2) the exporter and collector share a common protocol for export.
+
+Here, we consider a client speaking to an exporter and a collector. The client first receives an export capability from the exporter (with verb `measure` and with a protocol identified in the `export` section) and a collection capability from the collector (with the verb `collect` and with a URL in the `export` section describing where the exporter should export), either via a client-initiated workflow or a capability discovery server. The client then sends a specification to the exporter, which matches the schema and parameter constraints of both the export and collection capabilities, with the collector's URL in the `export` section.
+
+The exporter initiates export to the collector using the specified protocol, and replies with a receipt that can be used to interrupt the export, should it have an indefinite temporal scope. In the meantime, it sends data matching the capability's schema directly to the collector.
+
+This data, or data derived from the analysis thereof, can then be subsequently retrieved by a client using a client-initiated workflow to the collector.
+
+## Error Handling in mPlane Workflows {#error-handling-in-mplane-workflows}
+
+Any component may signal an error to its client or supervisor at any time by
+sending an exception message. While the taxonomy of error messages is at this
+time left up to each individual component, given the weakly imperative nature
+of the mPlane protocol, exceptions should be used sparingly, and only to
+notify components and clients of errors with the mPlane infrastructure itself.
+
+It is generally presumed that diagnostic information about errors which may
+require external human intervention to correct will be logged at each
+component; the mPlane exception facility is not intended as a replacement
+for logging facilities (such as syslog).
+
+Specifically, components using component-initiated connection establishment
+should not use the exception mechanism for common error conditions (e.g.,
+device losing connectivity for small network-edge probes) -- specifications
+sent to such components are expected to be best-effort. Exceptions should
+also not be returned for specifications which would normally not be delayed
+but are due to high load -- receipts should be used in this case, instead.
+Likewise, specifications which cannot be fulfilled because they request the
+use of capabilities that were once available but are no longer should be
+answered with withdrawals.
+
+Exceptions should always be sent in reply to messages sent to
+components or clients which cannot be handled due to a syntactic or semantic
+error in the message itself.
 
 # Security Considerations
 
 The mPlane protocol allows the control of network measurement devices. The
-protocol itself uses HTTPS as a session layer, and is therefore secured using
-TLS. TLS mutual authentication must be used for the exchange of mPlane
-messages, as access control decisions about which clients and components are
-trusted for which capabilities take identity information from the certificates
-TLS clients and servers use to identify themselves. Current operational best
-security practices for the deployment of TLS-secured protocols must be
-followed for the deployment of mPlane.
+protocol itself uses WebSockets using TLS as a session layer. TLS mutual
+authentication must be used for the exchange of mPlane messages, as access
+control decisions about which clients and components are trusted for which
+capabilities take identity information from the certificates TLS clients and
+servers use to identify themselves. Current operational best security
+practices for the deployment of TLS-secured protocols must be followed for the
+deployment of mPlane.
 
 Indirect export, as a design feature, presents a potential for information
 leakage, as indirectly exported data is necessarily related to measurement
@@ -1197,13 +1123,25 @@ secured at least as well as the mPlane protocol itself.
 
 # IANA Considerations
 
-This document has no actions for IANA.
+This document has no actions for IANA. Future versions of this document, should it become a standards-track specification, may specify the initial contents of a core mPlane registry to be managed by IANA.
 
 # Contributors
 
 This document is based on Deliverable 1.4, the architecture and protocol
 specification document produced by the mPlane project {{D14}}, which is the
-work of the mPlane consortium, specifically B. Trammell, M. Kuehlewind, M.
-Mellia, A. Finamore, S. Pentassuglia, G. De Rosa, F. Invernizzi, M. Milanesio,
-D. Rossi, S. Niccolini, I. Leontiadis, T. Szemethy, B. Szabo, R. Winter, M.
-Faath, B. Donnet, and D. Papadimitriou. This work is supported by the European Commission under grant agreement FP7-318627 mPlane. Support does not imply endorsement.
+work of the mPlane consortium, specifically Brian Trammell and Mirja
+Kuehlewind (the editors of this document), as well as Marco Mellia, Alessandro
+Finamore, Stefano Pentassuglia, Gianni De Rosa, Fabrizio Invernizzi, Marco
+Milanesio, Dario Rossi, Saverio Niccolini, Ilias Leontiadis, Tivadar Szemethy,
+Balas Szabo, Rolf Winter, Michael Faath, Benoit Donnet, and Dimitri
+Papadimitriou.
+
+# Acknowledgments
+
+Thanks to Lingli Deng and Robert Kisteleki for feedback leading to the
+improvement of this document and the protocol. 
+
+This work is supported by the European Commission under grant agreement
+FP7-318627 mPlane and H2020-688421 MAMI, and by the Swiss State Secretariat
+for Education, Research, and Innovation under contract no. 15.0268. This
+support does not imply endorsement of the contents of this document.
