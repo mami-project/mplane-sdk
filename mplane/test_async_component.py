@@ -175,7 +175,47 @@ def test_wsserver_component(delay=30):
     # wait for client shutdown
     loop.run_until_complete(client_task)
 
+
+def _test_client_initiated_component_thread():
+
+    
+    tc.run_until_shutdown()
+
+def test_client_initiated(delay=30):
+    # initialize environment
+    mplane.model.initialize_registry()
+    logging.basicConfig(level=logging.DEBUG)
+
+    # get a component and kick it off
+    tcom = mplane.async_component.WSServerComponent({
+            "Component" : {
+                "WSListener" : {
+                    "interface" : "",
+                    "port" : 8727
+                }
+            }
+        })
+    tc.services.append(ComponentTestService())
+
+    # schedule shutdown after the specified delay
+    loop.create_task(shutdown_after(tc, delay))   
+
+    # kick off the component
+    tc.start_running()
+
+    # now get a client
+    tcli = mplane.async_component.WSClientClient({
+        "Client" : {
+            "WSInitiator" : {
+                "url": "ws://localhost:8727/i_am_citizen_five"
+                }
+            }
+        })
+
+    # 
+
 if __name__ == "__main__":
+    test_basic_component()
     test_wsserver_component()
 
    
