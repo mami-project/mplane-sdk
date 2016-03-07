@@ -2906,9 +2906,11 @@ class Withdrawal(_StatementNotification):
         Capability.validate(self)
 
 class Interrupt(_StatementNotification):
-    """An Interrupt cancels a Specification"""
-    def __init__(self, dictval=None, specification=None, token=None):
-        super().__init__(dictval=dictval, statement=specification, token=token)
+    """
+    An Interrupt cancels a running measurement, given a specification or a receipt
+    """
+    def __init__(self, dictval=None, specrec=None, token=None):
+        super().__init__(dictval=dictval, statement=specrec, token=token)
 
     def kind_str(self):
         return KIND_INTERRUPT

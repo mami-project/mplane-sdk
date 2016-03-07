@@ -157,7 +157,7 @@ class CommonClient:
         else:
             cccs = [self.ccc[k] for k in self._ccc]
 
-        for ccc in self.cccs:
+        for ccc in cccs:
             if token_or_label in ccc.token_for_label:
                 token = ccc.token_for_label[token_or_label]
             else:
@@ -166,6 +166,51 @@ class CommonClient:
                 return (ccc, ccc.capabilities[token])
 
         raise KeyError("no capability for token or label "+token_or_label)
+
+    def receipt_for(self, token_or_label, coid=None):
+        """
+        Retrieve the first matching receipt given a token or label.
+        If a component identity is given, search for matching receipts 
+        from that component only; otherwise search all available receipts.
+
+        """
+        if coid:
+            cccs = [self._component_context(coid)]
+        else:
+            cccs = [self.ccc[k] for k in self._ccc]
+
+        for ccc in cccs:
+            if token_or_label in ccc.token_for_label:
+                token = ccc.token_for_label[token_or_label]
+            else:
+                token = token_or_label
+            if token in ccc.receipts:
+                return (ccc, ccc.receipts[token])
+
+        raise KeyError("no receipt for token or label "+token_or_label)
+
+    def result_for(self, token_or_label, coid=None):
+        """
+        Retrieve the first matching result given a token or label.
+        If a component identity is given, search for matching results 
+        from that component only; otherwise search all available results.
+
+        """
+        if coid:
+            cccs = [self._component_context(coid)]
+        else:
+            cccs = [self.ccc[k] for k in self._ccc]
+
+        for ccc in cccs:
+            if token_or_label in ccc.token_for_label:
+                token = ccc.token_for_label[token_or_label]
+            else:
+                token = token_or_label
+            if token in ccc.results:
+                return (ccc, ccc.results[token])
+
+        raise KeyError("no result for token or label "+token_or_label)
+
 
     def _specification_for(self, cap_tol, when, params, relabel=None, coid=None):
         """
@@ -215,7 +260,7 @@ class CommonClient:
         appropriate component. Returns the specification.
         """
 
-        (ccc, cap, spec) = self._spec_for(cap_tol, when, params, relabel, coid)
+        (ccc, cap, spec) = self._specification_for(cap_tol, when, params, relabel, coid)
         spec.validate()
         ccc.send(spec)
         return spec        
@@ -225,16 +270,27 @@ class CommonClient:
         Send an interrupt given a specification token or label.
 
         """
-
+        (ccc, receipt) = self.receipt_for(spec_tol, coid)
+        ccc.send(mplane.model.Interrupt(specrec=receipt))
         pass
 
     def retrieve_result(self, spec_tol, coid=None):
         """
         Retrieve a cached result, or resend a redemption if not yet available.
-
+        Returns the result if available or the receipt if not.
         """
+        # First try to get the cached result
+        try:
+            (ccc, result) = self.result_for(spec_tol, coid)
+            return result
+        except KeyError:
+            pass
 
-        pass
+        # Then try to get a receipt, and send a redemption
+        (ccc, receipt) = self.receipt_for(spec_tol, coid)
+        ccc.send(mplane.model.Redemption(receipt=receipt))
+        return receipt
+
 
 class WSClientClient(CommonClient):
     """
