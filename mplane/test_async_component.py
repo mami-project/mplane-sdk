@@ -1,4 +1,5 @@
 import mplane.async_component
+import mplane.async_client
 import mplane.model
 import websockets
 import logging
@@ -176,11 +177,6 @@ def test_wsserver_component(delay=30):
     loop.run_until_complete(client_task)
 
 
-def _test_client_initiated_component_thread():
-
-    
-    tc.run_until_shutdown()
-
 def test_client_initiated(delay=30):
     # initialize environment
     mplane.model.initialize_registry()
@@ -195,13 +191,13 @@ def test_client_initiated(delay=30):
                 }
             }
         })
-    tc.services.append(ComponentTestService())
+    tcom.services.append(ComponentTestService())
 
     # schedule shutdown after the specified delay
-    loop.create_task(shutdown_after(tc, delay))   
+    loop.create_task(shutdown_after(tcom, delay))   
 
     # kick off the component
-    tc.start_running()
+    tccom.start_running()
 
     # now get a client
     tcli = mplane.async_component.WSClientClient({
@@ -212,7 +208,22 @@ def test_client_initiated(delay=30):
             }
         })
 
-    # 
+    # run the client until we have capabilities
+    loop.run_until_complete(tcli.await_capabilities())
+
+    # find the capability and assert it has the fields we want
+    pass
+
+    # invoke it
+    spec = loop.run_until_complete(tcli.await_invocation(cap_tol = 'test-async-client', 
+                                                        when = mplane.model.When('now'), 
+                                                        params = { 'duration.s': 10 }))
+
+
+
+    # now wait for the result
+    res = loop.run_until_complete(tcli.await_result(spec.get_token()))
+
 
 if __name__ == "__main__":
     test_basic_component()
