@@ -181,6 +181,7 @@ def test_client_initiated(delay=30):
     # initialize environment
     mplane.model.initialize_registry()
     logging.basicConfig(level=logging.DEBUG)
+    loop = asyncio.get_event_loop()
 
     # get a component and kick it off
     tcom = mplane.async_component.WSServerComponent({
@@ -193,20 +194,20 @@ def test_client_initiated(delay=30):
         })
     tcom.services.append(ComponentTestService())
 
-    # schedule shutdown after the specified delay
-    loop.create_task(shutdown_after(tcom, delay))   
-
     # kick off the component
-    tccom.start_running()
+    tcom.start_running()
 
     # now get a client
-    tcli = mplane.async_component.WSClientClient({
+    tcli = mplane.async_client.WSClientClient({
         "Client" : {
             "WSInitiator" : {
                 "url": "ws://localhost:8727/i_am_citizen_five"
                 }
             }
         })
+
+    # connect
+    loop.create_task(tcli.connect())
 
     # run the client until we have capabilities
     loop.run_until_complete(tcli.await_capabilities())
@@ -224,9 +225,15 @@ def test_client_initiated(delay=30):
     # now wait for the result
     res = loop.run_until_complete(tcli.await_result(spec.get_token()))
 
+    # then shut down the client
+    loop.run_until_complete(tcli.shutdown())
+
+    # and shut down the component
+    loop.run_until_complete(tcom.shutdown())
+
 
 if __name__ == "__main__":
-    test_basic_component()
-    test_wsserver_component()
-
+    #test_basic_component()
+    #test_wsserver_component()
+    test_client_initiated()
    

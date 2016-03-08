@@ -30,6 +30,9 @@ import mplane.model
 import mplane.azn
 import mplane.tls
 
+logger = logging.getLogger(__name__)
+
+
 # NOTE: Link section rewriting should happen on the client side.
 
 class ClientComponentContext:
@@ -41,9 +44,6 @@ class ClientComponentContext:
 
     """
     def __init__(self, coid, url=None):
-        # create lock
-        self.lock = threading.Lock()
-
         # stash url and component identity
         self.url = url
         self.coid = coid
@@ -64,8 +64,7 @@ class ClientComponentContext:
         logger.debug("created "+repr(self))
 
     def send(self, msg):
-        with self.lock:
-            self.outq.put_nowait(msg)
+        self.outq.put_nowait(msg)
 
     def __repr__(self):
         return "ClientComponentContext(%s, %s)" % (repr(self.coid), repr(self.url))
@@ -114,47 +113,46 @@ class CommonClient:
         token = msg.get_token()
         label = msg.get_label()
 
-        with ccc.lock:
-            if isinstance(msg, mplane.model.Envelope):
-                for emsg in msg.messages():
-                    self.message_from(emsg, ccc)
-                    return
-            elif isinstance(msg, mplane.model.Exception):
-                logger.error("exception from "+repr(ccc)+": "+repr(msg))
+        if isinstance(msg, mplane.model.Envelope):
+            for emsg in msg.messages():
+                self.message_from(emsg, ccc)
                 return
-            elif isinstance(msg, mplane.model.Capability):
-                # store and/or update
-                ccc.capabilities[token] = msg
-                if label:
-                    ccc.token_for_label[label] = token
+        elif isinstance(msg, mplane.model.Exception):
+            logger.error("exception from "+repr(ccc)+": "+repr(msg))
+            return
+        elif isinstance(msg, mplane.model.Capability):
+            # store and/or update
+            ccc.capabilities[token] = msg
+            if label:
+                ccc.token_for_label[label] = token
 
-                # rewrite link
-                if not msg.get_link() and ccc.url:
-                    msg.set_link(ccc.url)
-            elif isinstance(msg, mplane.model.Withdrawal):
-                try:
-                    del(ccc.capabilities[token])
-                    del(ccc.token_for_label[label])
-                except KeyError:
-                    pass
-            elif isinstance(msg, mplane.model.Receipt):
-                ccc.receipts[token] = msg
-                if label:
-                    ccc.token_for_label[label] = token
-                # we have a receipt. token is 
-                self._token_invoked[token].release()
-            elif isinstance(msg, mplane.model.Result):
-                ccc.results[token] = msg
-                if label:
-                    ccc.token_for_label[label] = token
-                try:
-                    del(self.receipts[token])
-                except KeyError:
-                    pass
-                self._token_complete[token].release()
-            else:
-                reply = mplane.model.Exception(token=token, errmsg="bad message type for client")
-                logger.warning("client cannot handle message "+repr(msg))
+            # rewrite link
+            if not msg.get_link() and ccc.url:
+                msg.set_link(ccc.url)
+        elif isinstance(msg, mplane.model.Withdrawal):
+            try:
+                del(ccc.capabilities[token])
+                del(ccc.token_for_label[label])
+            except KeyError:
+                pass
+        elif isinstance(msg, mplane.model.Receipt):
+            ccc.receipts[token] = msg
+            if label:
+                ccc.token_for_label[label] = token
+            # we have a receipt. token is 
+            self._token_invoked[token].release()
+        elif isinstance(msg, mplane.model.Result):
+            ccc.results[token] = msg
+            if label:
+                ccc.token_for_label[label] = token
+            try:
+                del(self.receipts[token])
+            except KeyError:
+                pass
+            self._token_complete[token].release()
+        else:
+            reply = mplane.model.Exception(token=token, errmsg="bad message type for client")
+            logger.warning("client cannot handle message "+repr(msg))
 
     def _search_tol(self, access_name, access_lambda, token_or_label, coid=None):
         if coid:
@@ -163,13 +161,12 @@ class CommonClient:
             cccs = [self.ccc[k] for k in self._ccc]
 
         for ccc in cccs:
-            with ccc.lock:
-                if token_or_label in ccc.token_for_label:
-                    token = ccc.token_for_label[token_or_label]
-                else:
-                    token = token_or_label
-                if token in access_lambda(ccc):
-                    return (ccc, access_lambda(ccc)[token])
+            if token_or_label in ccc.token_for_label:
+                token = ccc.token_for_label[token_or_label]
+            else:
+                token = token_or_label
+            if token in access_lambda(ccc):
+                return (ccc, access_lambda(ccc)[token])
 
         raise KeyError("no "+str(access_name)+" for token or label "+token_or_label)        
 
@@ -300,7 +297,7 @@ class WSClientClient(CommonClient):
         self.url = config["Client"]["WSInitiator"]["url"]
         self.tls = mplane.tls.TlsState(config)
 
-    async def connect():
+    async def connect(self):
         # connect to the component
         async with websockets.connect(self.url) as websocket:
 
@@ -355,6 +352,9 @@ class WSClientClient(CommonClient):
         await self._token_complete(spec_tol)
         return self.retrieve_result(spec_tol)
 
+    async def shutdown(self):
+        logger.debug("signaling shutdown")
+        self._sde.set()
 
 class WSServerClient(CommonClient):
     """
@@ -365,7 +365,7 @@ class WSServerClient(CommonClient):
 
 class WSBiClient(CommonClient):
     """
-    A Client which acts as both a WebSockets server
+    A Client which acts as both a WebSockets server and a WebSockets client
     (for component-initiated connection establishment). 
     """     
     pass
@@ -386,7 +386,6 @@ class WSBiClient(CommonClient):
 # DEFAULT_SPECIFICATION_PATH = "show/specification"
 # DEFAULT_RESULT_PATH = "register/result"
 
-# logger = logging.getLogger(__name__)
 
 # class BaseClient(object):
 #     """
