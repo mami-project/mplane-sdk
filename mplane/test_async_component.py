@@ -212,7 +212,7 @@ def test_client_initiated(delay=30):
     # run the client until we have capabilities
     loop.run_until_complete(tcli.await_capabilities())
 
-    # find the capability and assert it has the fields we want
+    # find the capability and verify it has the fields we want
     pass
 
     # invoke it
@@ -222,14 +222,15 @@ def test_client_initiated(delay=30):
 
 
 
-    # now wait for the result
-    res = loop.run_until_complete(tcli.await_result(spec.get_token()))
+    # now wait for the result FIXME not quite the right API
+    res = loop.run_until_complete(tcli.poll_for_result(spec.get_token()))
 
-    # then shut down the client
-    loop.run_until_complete(tcli.shutdown())
+    # verify the result
+    pass
 
-    # and shut down the component
-    loop.run_until_complete(tcom.shutdown())
+    # then shut down the client and component
+    tcli.stop_running()
+    tcom.stop_running()
 
 
 if __name__ == "__main__":

@@ -329,7 +329,7 @@ class WSServerComponent(CommonComponent):
     def __init__(self, config):
         super().__init__(config)
 
-        # Shutdown event
+        # Shutdown events
         self._sde = asyncio.Event()
 
         # Connection information
@@ -385,15 +385,16 @@ class WSServerComponent(CommonComponent):
         asyncio.get_event_loop().run_until_complete(self._sde.wait())
         self.wssvr.close()
 
+    def shutdown(self):
+        self._sde.set()
+
     def start_running(self):
         self.wssvr = asyncio.get_event_loop().run_until_complete(self._start_server)
 
     def stop_running(self):
         self.wssvr.close()
 
-    async def shutdown(self):
-        logger.debug("signaling shutdown")
-        self._sde.set()
+
 
 
 #######################################################################

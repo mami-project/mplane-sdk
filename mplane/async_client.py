@@ -113,6 +113,8 @@ class CommonClient:
         token = msg.get_token()
         label = msg.get_label()
 
+        logger.debug("got message "+repr(msg))
+
         if isinstance(msg, mplane.model.Envelope):
             for emsg in msg.messages():
                 self.message_from(emsg, ccc)
@@ -129,6 +131,10 @@ class CommonClient:
             # rewrite link
             if not msg.get_link() and ccc.url:
                 msg.set_link(ccc.url)
+
+            # signal we have caps
+            self._i_have_capabilities.set()
+
         elif isinstance(msg, mplane.model.Withdrawal):
             try:
                 del(ccc.capabilities[token])
@@ -139,17 +145,17 @@ class CommonClient:
             ccc.receipts[token] = msg
             if label:
                 ccc.token_for_label[label] = token
-            # we have a receipt. token is 
-            self._token_invoked[token].release()
+            # we have a receipt.
+            self._token_invoked[token].set()
         elif isinstance(msg, mplane.model.Result):
             ccc.results[token] = msg
             if label:
                 ccc.token_for_label[label] = token
             try:
-                del(self.receipts[token])
+                del(ccc.receipts[token])
             except KeyError:
                 pass
-            self._token_complete[token].release()
+            self._token_complete[token].set()
         else:
             reply = mplane.model.Exception(token=token, errmsg="bad message type for client")
             logger.warning("client cannot handle message "+repr(msg))
@@ -158,7 +164,7 @@ class CommonClient:
         if coid:
             cccs = [self._component_context(coid)]
         else:
-            cccs = [self.ccc[k] for k in self._ccc]
+            cccs = [self._ccc[k] for k in self._ccc]
 
         for ccc in cccs:
             if token_or_label in ccc.token_for_label:
@@ -252,8 +258,8 @@ class CommonClient:
 
         # create semaphores
         token = spec.get_token()
-        self._token_invoked[token] = asyncio.Semaphore()
-        self._token_complete[token] = asyncio.Semaphore()
+        self._token_invoked[token] = asyncio.Event()
+        self._token_complete[token] = asyncio.Event()
         return spec        
 
     def interrupt(self, spec_tol, coid=None):
@@ -293,6 +299,9 @@ class WSClientClient(CommonClient):
         # Shutdown event
         self._sde = asyncio.Event()
 
+        # Task for connect()
+        self._task = None
+
         # Configuration
         self.url = config["Client"]["WSInitiator"]["url"]
         self.tls = mplane.tls.TlsState(config)
@@ -300,6 +309,7 @@ class WSClientClient(CommonClient):
     async def connect(self):
         # connect to the component
         async with websockets.connect(self.url) as websocket:
+            logger.debug("connection to "+self.url+" opened") 
 
             # get my component context
             # FIXME use URL for now
@@ -308,7 +318,7 @@ class WSClientClient(CommonClient):
             try:
                 # now exchange messages until the shutdown flag is true
                 while True:
-                    if self._sde.is_true():
+                    if self._sde.is_set():
                         break
 
                     rx = asyncio.ensure_future(websocket.recv())
@@ -330,6 +340,7 @@ class WSClientClient(CommonClient):
                 logger.debug("connection to "+ccc.coid+" closed") 
 
     async def await_capabilities(self):
+        logger.debug("waiting for capabilities...")
         await self._i_have_capabilities.wait()
 
     async def await_invocation(self, cap_tol, when, params, 
@@ -343,18 +354,26 @@ class WSClientClient(CommonClient):
         token = spec.get_token()
 
         # wait for invocation to complete
-        await self._token_invoked[token].acquire()
+        await self._token_invoked[token].wait()
 
-        # get the receipt or result
-        return self.retrieve_result(token, coid = coid)
+        # return the spec
+        return spec
 
-    async def await_result(self, spec_tol):
-        await self._token_complete(spec_tol)
-        return self.retrieve_result(spec_tol)
+    async def poll_for_result(self, token, poll=1):
+        while True:
+            res = self.retrieve_result(token)
+            if isinstance(res, mplane.model.Result):
+                return res
+            await asyncio.sleep(poll)
 
-    async def shutdown(self):
+    def start_running(self):
+        self._task = asyncio.ensure_future(self.connect())
+
+    def stop_running(self):
         logger.debug("signaling shutdown")
         self._sde.set()
+        asyncio.get_event_loop().run_until_complete(asyncio.wait((self._task,)))
+
 
 class WSServerClient(CommonClient):
     """
