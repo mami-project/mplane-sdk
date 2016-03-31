@@ -317,13 +317,12 @@ class WSClientClient(CommonClient):
 
             try:
                 # now exchange messages until the shutdown flag is true
-                while True:
-                    if self._sde.is_set():
-                        break
+                while not self._sde.is_set():
 
                     rx = asyncio.ensure_future(websocket.recv())
                     tx = asyncio.ensure_future(ccc.outq.get())
-                    done, pending = await asyncio.wait([rx, tx], 
+                    sd = asyncio.ensure_future(self._sde.wait())
+                    done, pending = await asyncio.wait((rx, tx, sd), 
                                         return_when=asyncio.FIRST_COMPLETED)
 
                     if rx in done:
@@ -335,9 +334,17 @@ class WSClientClient(CommonClient):
                         await websocket.send(mplane.model.unparse_json(tx.result()))
                     else:
                         tx.cancel()
+
+                    if sd in done:
+                        break
+                    else:
+                        sd.cancel()
+
             except websockets.exceptions.ConnectionClosed:
                 # FIXME schedule a reconnection attempt
                 logger.debug("connection to "+ccc.coid+" closed") 
+            finally:
+                logger.debug("shutting down")
 
     async def await_capabilities(self):
         logger.debug("waiting for capabilities...")
@@ -360,9 +367,13 @@ class WSClientClient(CommonClient):
         return spec
 
     async def await_result(self, token, timeout=None):
+        """
+        Wait for a result to return from an invoked specification
+
+        """
         eventwait = self._token_complete[token].wait()
 
-        done, pending = await asyncio.wait([eventwait], timeout=timeout)
+        done, pending = await asyncio.wait((eventwait,), timeout=timeout)
 
         if eventwait in done:
             return self.retrieve_result(token)
@@ -378,11 +389,12 @@ class WSClientClient(CommonClient):
 
     def start_running(self):
         self._task = asyncio.ensure_future(self.connect())
+        logger.debug("client started task "+repr(self._task))
 
     def stop_running(self):
         logger.debug("signaling shutdown")
         self._sde.set()
-        asyncio.get_event_loop().run_until_complete(asyncio.wait((self._task,)))
+        asyncio.get_event_loop().run_until_complete(self._task)
 
 
 class WSServerClient(CommonClient):

@@ -184,7 +184,7 @@ class CommonComponent:
         return self._ccc[clid]
 
     async def _async_reply(self, ccc, service_task):
-        # wait until the task is complete (how to do this?)
+        # wait until the task is complete
         done, pending = await asyncio.wait([service_task])
         if service_task in done:
             ccc.reply(service_task.result())
@@ -315,6 +315,7 @@ def websocket_clid(websocket, path=None):
     # Extract CID from subject common name 
     # (see https://docs.python.org/3/library/ssl.html#ssl.SSLSocket.getpeercert)
     # Problem: WebSocketServerProtocol doesn't implement get_extra_info :(
+    # Possible solution: dig deep into 
     #
     # peercert = websocket.get_extra_info("peercert", default=None)
     # if peercert:
@@ -362,9 +363,12 @@ class WSServerComponent(CommonComponent):
             await websocket.send(mplane.model.unparse_json(cap_envelope))
 
             # now exchange messages forever
-            while True:
+            while not self._sde.is_set():
+
                 rx = asyncio.ensure_future(websocket.recv())
                 tx = asyncio.ensure_future(ccc.outq.get())
+                sd = asyncio.ensure_future(self._sde.wait())
+
                 done, pending = await asyncio.wait([rx, tx], 
                                     return_when=asyncio.FIRST_COMPLETED)
 
@@ -382,8 +386,16 @@ class WSServerComponent(CommonComponent):
                     await websocket.send(mplane.model.unparse_json(tx.result()))
                 else:
                     tx.cancel()
+
+                if sd in done:
+                    break
+                else:
+                    sd.cancel()
+
         except websockets.exceptions.ConnectionClosed:
             logger.debug("connection from "+ccc.clid+" closed")
+        finally:
+            logger.debug("shutting down")
 
     def run_forever(self):
         asyncio.get_event_loop().run_until_complete(self._start_server)
@@ -394,15 +406,13 @@ class WSServerComponent(CommonComponent):
         asyncio.get_event_loop().run_until_complete(self._sde.wait())
         self.wssvr.close()
 
-    def shutdown(self):
-        self._sde.set()
-
     def start_running(self):
         self.wssvr = asyncio.get_event_loop().run_until_complete(self._start_server)
 
     def stop_running(self):
+        self._sde.set()
         self.wssvr.close()
-
+        asyncio.get_event_loop().run_until_complete(self.wssvr.wait_closed())
 
 
 

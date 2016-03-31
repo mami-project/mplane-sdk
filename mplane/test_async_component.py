@@ -182,6 +182,7 @@ def test_client_initiated(delay=30):
     # initialize environment
     mplane.model.initialize_registry()
     logging.basicConfig(level=logging.DEBUG)
+    logging.getLogger('websockets').setLevel(logging.INFO)
     loop = asyncio.get_event_loop()
 
     # get a component and kick it off
@@ -208,7 +209,7 @@ def test_client_initiated(delay=30):
         })
 
     # connect
-    loop.create_task(tcli.connect())
+    tcli.start_running()
 
     # run the client until we have capabilities
     loop.run_until_complete(tcli.await_capabilities())
@@ -229,7 +230,7 @@ def test_client_initiated(delay=30):
     # verify the result
     pass
 
-    # then shut down the client and component FIXME this breaks
+    # then shut down the client and component
     tcli.stop_running()
     tcom.stop_running()
 
