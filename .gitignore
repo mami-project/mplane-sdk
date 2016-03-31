@@ -1,4 +1,5 @@
 __pycache__/
+mplane_sdk.egg-info/
 *.py[cod]
 *.so
 sphinx/_build/
