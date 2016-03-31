@@ -151,6 +151,7 @@ def test_wsserver_component(delay=30):
     # initialize environment
     mplane.model.initialize_registry()
     logging.basicConfig(level=logging.DEBUG)
+    logging.getLogger('websockets').setLevel(logging.INFO)
     loop = asyncio.get_event_loop()
 
     # get a component 
@@ -222,13 +223,13 @@ def test_client_initiated(delay=30):
 
 
 
-    # now wait for the result FIXME not quite the right API
-    res = loop.run_until_complete(tcli.poll_for_result(spec.get_token()))
+    # now wait for the result 
+    res = loop.run_until_complete(tcli.await_result(spec.get_token()))
 
     # verify the result
     pass
 
-    # then shut down the client and component
+    # then shut down the client and component FIXME this breaks
     tcli.stop_running()
     tcom.stop_running()
 

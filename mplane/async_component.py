@@ -183,12 +183,21 @@ class CommonComponent:
             self._ccc[clid] = ComponentClientContext(clid, url)
         return self._ccc[clid]
 
+    async def _async_reply(self, ccc, service_task):
+        # wait until the task is complete (how to do this?)
+        done, pending = await asyncio.wait([service_task])
+        if service_task in done:
+            ccc.reply(service_task.result())
+
     def _invoke_inner(self, ccc, spec, service):
-        # schedule the coroutine and stash the task
+        # schedule a coroutine to run the service and stash the task
         token = spec.get_token()
         task = self._loop.create_task(service.run(spec, lambda: ccc.interrupted(token)))
         ccc.tasks[token] = task
         logger.info("invoke "+repr(spec))
+
+        # schedule a coroutine to await the service task and send a reply
+        self._loop.create_task(self._async_reply(ccc, task))
 
     def _invoke(self, ccc, spec):
         """

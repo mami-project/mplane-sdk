@@ -359,12 +359,22 @@ class WSClientClient(CommonClient):
         # return the spec
         return spec
 
-    async def poll_for_result(self, token, poll=1):
-        while True:
-            res = self.retrieve_result(token)
-            if isinstance(res, mplane.model.Result):
-                return res
-            await asyncio.sleep(poll)
+    async def await_result(self, token, timeout=None):
+        eventwait = self._token_complete[token].wait()
+
+        done, pending = await asyncio.wait([eventwait], timeout=timeout)
+
+        if eventwait in done:
+            return self.retrieve_result(token)
+        else:
+            return None
+
+    # async def poll_for_result(self, token, poll=1):
+    #     while True:
+    #         res = self.retrieve_result(token)
+    #         if isinstance(res, mplane.model.Result):
+    #             return res
+    #         await asyncio.sleep(poll)
 
     def start_running(self):
         self._task = asyncio.ensure_future(self.connect())
