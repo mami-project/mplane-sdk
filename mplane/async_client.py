@@ -420,7 +420,7 @@ def websocket_coid(websocket, path=None):
         return path
 
     # No peer cert and no path. Generate a UUID for an anonymous client
-    return str(uuid.uuid3())
+    return str(uuid.uuid4())
 
 
 class WSServerClient(CommonClient):

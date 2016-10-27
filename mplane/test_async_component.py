@@ -48,10 +48,6 @@ class ComponentTestService():
         return result
 
 def test_basic_component():
-    # initialize environment
-    mplane.model.initialize_registry()
-    logging.basicConfig(level=logging.DEBUG)
-    loop = asyncio.get_event_loop()
 
     # make a component and a client context
     tc = mplane.async_component.CommonComponent(None)
@@ -148,11 +144,6 @@ async def _test_wsservercomponent_client_hello():
         print(mplane.model.render(res))
 
 def test_wsserver_component(delay=30):
-    # initialize environment
-    mplane.model.initialize_registry()
-    logging.basicConfig(level=logging.DEBUG)
-    logging.getLogger('websockets').setLevel(logging.INFO)
-    loop = asyncio.get_event_loop()
 
     # get a component 
     tc = mplane.async_component.WSServerComponent({
@@ -179,11 +170,6 @@ def test_wsserver_component(delay=30):
 
 
 def test_client_initiated(delay=30):
-    # initialize environment
-    mplane.model.initialize_registry()
-    logging.basicConfig(level=logging.DEBUG)
-    logging.getLogger('websockets').setLevel(logging.INFO)
-    loop = asyncio.get_event_loop()
 
     # get a component and kick it off
     tcom = mplane.async_component.WSServerComponent({
@@ -235,13 +221,6 @@ def test_client_initiated(delay=30):
     tcom.stop_running()
 
 def test_component_initiated(delay=30):
-
-    # initialize environment
-    mplane.model.initialize_registry()
-    logging.basicConfig(level=logging.DEBUG)
-    logging.getLogger('websockets').setLevel(logging.INFO)
-    loop = asyncio.get_event_loop()
-
     # get a client
     tcli = mplane.async_client.WSServerClient({
         "Client" : {
@@ -252,6 +231,8 @@ def test_component_initiated(delay=30):
             }
         })
     tcli.start_running()
+
+    logger.info("Client up")
 
     # get a component 
     tcom = mplane.async_component.WSClientComponent({
@@ -266,8 +247,14 @@ def test_component_initiated(delay=30):
     # connect
     tcom.start_running()
 
+    logger.info("Component connected")
+
+
     # run the client until we have capabilities
     loop.run_until_complete(tcli.await_capabilities())
+
+    logger.info("Capabilities available")
+
 
     # find the capability and verify it has the fields we want
     pass
@@ -277,19 +264,33 @@ def test_component_initiated(delay=30):
                                                         when = mplane.model.When('now'), 
                                                         params = { 'duration.s': 10 }))
 
+    logger.info("Test specification invoked")
 
 
     # now wait for the result 
     res = loop.run_until_complete(tcli.await_result(spec.get_token()))
 
+    logger.info("Result available")
+
+
     # verify the result
     pass
 
     # then shut down the client and component
-    tcli.stop_running()
     tcom.stop_running()
+    logger.info("Component disconnected")
+
+    tcli.stop_running()
+    logger.info("Client shutdown")
+
 
 if __name__ == "__main__":
+    # initialize environment
+    mplane.model.initialize_registry()
+    logging.basicConfig(level=logging.DEBUG)
+    #logging.getLogger('websockets').setLevel(logging.INFO)
+    loop = asyncio.get_event_loop()
+
     #test_basic_component()
     #test_wsserver_component()
     #logger.info("testing client-initiated...")

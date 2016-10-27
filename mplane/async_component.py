@@ -328,7 +328,7 @@ def websocket_clid(websocket, path=None):
         return path
 
     # No peer cert and no path. Generate a UUID for an anonymous client
-    return str(uuid.uuid3())
+    return str(uuid.uuid4())
 
 class WSServerComponent(CommonComponent):
     """
@@ -440,7 +440,8 @@ class WSClientComponent(CommonComponent):
         async with websockets.connect(self.url) as websocket:
 
             # get my client context
-            ccc = self._client_context(websocket_clid(websocket), self.url)
+            ccc = self._client_context(self.url, self.url)
+            logger.debug("connected to client "+ccc.clid)
 
             try:
                 # dump all capabilities the client can use in an envelope
