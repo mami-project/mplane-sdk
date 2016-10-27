@@ -292,6 +292,8 @@ def test_component_initiated(delay=30):
 if __name__ == "__main__":
     #test_basic_component()
     #test_wsserver_component()
-    test_client_initiated()
-    #test_component_initiated
+    #logger.info("testing client-initiated...")
+    #test_client_initiated()
+    logger.info("testing component-initiated...")
+    test_component_initiated()
    

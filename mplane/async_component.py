@@ -353,6 +353,7 @@ class WSServerComponent(CommonComponent):
     async def serve(self, websocket, path):
         # get my client context
         ccc = self._client_context(websocket_clid(websocket, path))
+        logger.debug("component got connection from "+ccc.clid)
 
         try:
             # dump all capabilities the client can use in an envelope
@@ -434,7 +435,7 @@ class WSClientComponent(CommonComponent):
         self.url = config["Component"]["WSInitiator"]["url"]
         self.tls = mplane.tls.TlsState(config)
         
-    async def connect():
+    async def connect(self):
         # connect to the client
         async with websockets.connect(self.url) as websocket:
 
