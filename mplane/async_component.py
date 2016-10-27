@@ -454,13 +454,13 @@ class WSClientComponent(CommonComponent):
                 # now exchange messages until the shutdown flag is true
                 # FIXME need to wait on SDE too. 
 
-                while True:
-                    if self._sde.is_set():
-                        break
+                while not self._sde.is_set():
 
                     rx = asyncio.ensure_future(websocket.recv())
                     tx = asyncio.ensure_future(ccc.outq.get())
-                    done, pending = await asyncio.wait([rx, tx], 
+                    sd = asyncio.ensure_future(self._sde.wait())
+
+                    done, pending = await asyncio.wait([rx, tx, sd], 
                                         return_when=asyncio.FIRST_COMPLETED)
 
                     if rx in done:
@@ -472,6 +472,12 @@ class WSClientComponent(CommonComponent):
                         await websocket.send(mplane.model.unparse_json(tx.result()))
                     else:
                         tx.cancel()
+
+                    if sd in done:
+                        break
+                    else:
+                        sd.cancel()
+
             except websockets.exceptions.ConnectionClosed:
                 # FIXME schedule a reconnection attempt
                 logger.debug("connection to "+ccc.clid+" closed")
