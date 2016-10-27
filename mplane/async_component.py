@@ -453,7 +453,7 @@ class WSClientComponent(CommonComponent):
 
                 # now exchange messages until the shutdown flag is true
                 while True:
-                    if self._sde.is_true():
+                    if self._sde.is_set():
                         break
 
                     rx = asyncio.ensure_future(websocket.recv())
