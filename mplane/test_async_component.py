@@ -288,7 +288,7 @@ if __name__ == "__main__":
     # initialize environment
     mplane.model.initialize_registry()
     logging.basicConfig(level=logging.DEBUG)
-    #logging.getLogger('websockets').setLevel(logging.INFO)
+    logging.getLogger('websockets').setLevel(logging.INFO)
     loop = asyncio.get_event_loop()
 
     #test_basic_component()

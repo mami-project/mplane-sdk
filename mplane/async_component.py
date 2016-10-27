@@ -452,6 +452,8 @@ class WSClientComponent(CommonComponent):
                 await websocket.send(mplane.model.unparse_json(cap_envelope))
 
                 # now exchange messages until the shutdown flag is true
+                # FIXME need to wait on SDE too. 
+
                 while True:
                     if self._sde.is_set():
                         break
