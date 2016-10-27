@@ -396,7 +396,7 @@ class WSServerComponent(CommonComponent):
         except websockets.exceptions.ConnectionClosed:
             logger.debug("connection from "+ccc.clid+" closed")
         finally:
-            logger.debug("shutting down")
+            logger.debug("shutting down, outq:"+str(ccc.outq.qsize()))
 
     def run_forever(self):
         asyncio.get_event_loop().run_until_complete(self._start_server)
@@ -481,6 +481,8 @@ class WSClientComponent(CommonComponent):
             except websockets.exceptions.ConnectionClosed:
                 # FIXME schedule a reconnection attempt
                 logger.debug("connection to "+ccc.clid+" closed")
+            finally:
+                logger.debug("shutting down, outq:"+str(ccc.outq.qsize()))
 
     def start_running(self):
         self._task = asyncio.ensure_future(self.connect())
@@ -491,13 +493,14 @@ class WSClientComponent(CommonComponent):
         self._sde.set()
         asyncio.get_event_loop().run_until_complete(self._task)
 
-    def run_until_shutdown(self):
-        wscli = asyncio.get_event_loop().run_until_complete(self.connect())
-        wscli.close()
 
-    async def shutdown(self):
-        logger.debug("signaling shutdown")
-        self._sde.set()
+    # def run_until_shutdown(self):
+    #     wscli = asyncio.get_event_loop().run_until_complete(self.connect())
+    #     wscli.close()
+
+    # async def shutdown(self):
+    #     logger.debug("signaling shutdown")
+    #     self._sde.set()
 
 
 

@@ -378,7 +378,7 @@ class WSClientClient(CommonClient):
                 # FIXME schedule a reconnection attempt
                 logger.debug("connection to "+ccc.coid+" closed") 
             finally:
-                logger.debug("shutting down")
+                logger.debug("shutting down, outq:"+str(ccc.outq.qsize()))
 
     # async def poll_for_result(self, token, poll=1):
     #     while True:
@@ -474,7 +474,7 @@ class WSServerClient(CommonClient):
         except websockets.exceptions.ConnectionClosed:
             logger.debug("connection from "+ccc.coid+" closed")
         finally:
-            logger.debug("shutting down")
+            logger.debug("shutting down, outq:"+str(ccc.outq.qsize()))
 
     def start_running(self):
         self.wssvr = asyncio.get_event_loop().run_until_complete(self._start_server)
