@@ -315,7 +315,7 @@ def websocket_clid(websocket, path=None):
     # Extract CID from subject common name 
     # (see https://docs.python.org/3/library/ssl.html#ssl.SSLSocket.getpeercert)
     # Problem: WebSocketServerProtocol doesn't implement get_extra_info :(
-    # Possible solution: dig deep into 
+    # Possible solution: look at the source and use private fields :(
     #
     # peercert = websocket.get_extra_info("peercert", default=None)
     # if peercert:
@@ -472,6 +472,14 @@ class WSClientComponent(CommonComponent):
                 # FIXME schedule a reconnection attempt
                 logger.debug("connection to "+ccc.clid+" closed")
 
+    def start_running(self):
+        self._task = asyncio.ensure_future(self.connect())
+        logger.debug("component started task "+repr(self._task))
+
+    def stop_running(self):
+        logger.debug("signaling shutdown")
+        self._sde.set()
+        asyncio.get_event_loop().run_until_complete(self._task)
 
     def run_until_shutdown(self):
         wscli = asyncio.get_event_loop().run_until_complete(self.connect())

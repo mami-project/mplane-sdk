@@ -234,9 +234,64 @@ def test_client_initiated(delay=30):
     tcli.stop_running()
     tcom.stop_running()
 
+def test_component_initiated(delay=30):
+
+    # initialize environment
+    mplane.model.initialize_registry()
+    logging.basicConfig(level=logging.DEBUG)
+    logging.getLogger('websockets').setLevel(logging.INFO)
+    loop = asyncio.get_event_loop()
+
+    # get a client
+    tcli = mplane.async_client.WSServerClient({
+        "Client" : {
+                "WSListener" : {
+                    "interface" : "",
+                    "port" : 8727
+                } 
+            }
+        })
+    tcli.start_running()
+
+    # get a component 
+    tcom = mplane.async_component.WSClientComponent({
+            "Component" : {
+                "WSInitiator" : {
+                    "url": "ws://localhost:8727/i_am_citizen_six"
+                }
+            }
+        })
+    tcom.services.append(ComponentTestService())
+
+    # connect
+    tcom.start_running()
+
+    # run the client until we have capabilities
+    loop.run_until_complete(tcli.await_capabilities())
+
+    # find the capability and verify it has the fields we want
+    pass
+
+    # invoke it
+    spec = loop.run_until_complete(tcli.await_invocation(cap_tol = 'test-async-client', 
+                                                        when = mplane.model.When('now'), 
+                                                        params = { 'duration.s': 10 }))
+
+
+
+    # now wait for the result 
+    res = loop.run_until_complete(tcli.await_result(spec.get_token()))
+
+    # verify the result
+    pass
+
+    # then shut down the client and component
+    tcli.stop_running()
+    tcom.stop_running()
 
 if __name__ == "__main__":
     #test_basic_component()
     #test_wsserver_component()
     test_client_initiated()
+    #test_component_initiated
    

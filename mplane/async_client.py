@@ -239,6 +239,10 @@ class CommonClient:
 
         return (ccc, cap, spec)
 
+    async def await_capabilities(self):
+        logger.debug("waiting for capabilities...")
+        await self._i_have_capabilities.wait()
+
     def invoke_capability(self, cap_tol, when, params, 
                           relabel=None, coid=None):
         """
@@ -261,6 +265,22 @@ class CommonClient:
         self._token_invoked[token] = asyncio.Event()
         self._token_complete[token] = asyncio.Event()
         return spec        
+
+   async def await_invocation(self, cap_tol, when, params, 
+                          relabel=None, coid=None):
+        # invoke the capability
+        spec = self.invoke_capability(  cap_tol = cap_tol, 
+                                        when = when,
+                                        params = params,
+                                        relabel = relabel,
+                                        coid = coid)
+        token = spec.get_token()
+
+        # wait for invocation to complete
+        await self._token_invoked[token].wait()
+
+        # return the spec
+        return spec
 
     def interrupt(self, spec_tol, coid=None):
         """
@@ -287,6 +307,20 @@ class CommonClient:
         (ccc, receipt) = self.receipt_for(spec_tol, coid)
         ccc.send(mplane.model.Redemption(receipt=receipt))
         return receipt
+
+    async def await_result(self, token, timeout=None):
+        """
+        Wait for a result to return from an invoked specification
+
+        """
+        eventwait = self._token_complete[token].wait()
+
+        done, pending = await asyncio.wait((eventwait,), timeout=timeout)
+
+        if eventwait in done:
+            return self.retrieve_result(token)
+        else:
+            return None
 
 class WSClientClient(CommonClient):
     """
@@ -346,40 +380,6 @@ class WSClientClient(CommonClient):
             finally:
                 logger.debug("shutting down")
 
-    async def await_capabilities(self):
-        logger.debug("waiting for capabilities...")
-        await self._i_have_capabilities.wait()
-
-    async def await_invocation(self, cap_tol, when, params, 
-                          relabel=None, coid=None):
-        # invoke the capability
-        spec = self.invoke_capability(  cap_tol = cap_tol, 
-                                        when = when,
-                                        params = params,
-                                        relabel = relabel,
-                                        coid = coid)
-        token = spec.get_token()
-
-        # wait for invocation to complete
-        await self._token_invoked[token].wait()
-
-        # return the spec
-        return spec
-
-    async def await_result(self, token, timeout=None):
-        """
-        Wait for a result to return from an invoked specification
-
-        """
-        eventwait = self._token_complete[token].wait()
-
-        done, pending = await asyncio.wait((eventwait,), timeout=timeout)
-
-        if eventwait in done:
-            return self.retrieve_result(token)
-        else:
-            return None
-
     # async def poll_for_result(self, token, poll=1):
     #     while True:
     #         res = self.retrieve_result(token)
@@ -396,20 +396,90 @@ class WSClientClient(CommonClient):
         self._sde.set()
         asyncio.get_event_loop().run_until_complete(self._task)
 
+def websocket_coid(websocket, path=None):
+    """
+    Get a component ID from the websocket's peer certificate (for wss:// URLs),
+    allow the component to provide a component ID on the websocket path 
+    (for ws:// URLs), or default to a UUID for anonymous components
+
+    """ 
+
+    # Extract CID from subject common name 
+    # (see https://docs.python.org/3/library/ssl.html#ssl.SSLSocket.getpeercert)
+    # Problem: WebSocketServerProtocol doesn't implement get_extra_info :(
+    # Possible solution: look at the source and use private fields :(
+    #
+    # peercert = websocket.get_extra_info("peercert", default=None)
+    # if peercert:
+    #     for rdn in peercert['subject']:
+    #         if rdn[0][0] == "commonName":
+    #             return rdn[0][1]
+
+    # No peer cert. Extract CID from path
+    if path and path != "/":
+        return path
+
+    # No peer cert and no path. Generate a UUID for an anonymous client
+    return str(uuid.uuid3())
+
 
 class WSServerClient(CommonClient):
     """
     A Client which acts as a WebSockets server
     (for component-initiated connection establishment). 
-    """   
-    pass
+    """ 
+    def __init__(self, config):
+        super().__init__(config)
 
-class WSBiClient(CommonClient):
-    """
-    A Client which acts as both a WebSockets server and a WebSockets client
-    (for component-initiated connection establishment). 
-    """     
-    pass
+        # Shutdown event
+        self._sde = asyncio.Event()
+
+        # Connection information
+        interface = config["Client"]["WSListener"]["interface"]
+        port = int(config["Client"]["WSListener"]["port"])
+        tls = mplane.tls.TlsState(config)
+        
+        # Coroutine to bring the server up
+        self._start_server = websockets.server.serve(self.serve, interface, port, ssl=tls.get_ssl_context())
+
+    async def serve(self, websocket, path):
+        # get my component context
+        ccc = self._component_context(websocket_coid(websocket, path))
+
+        # now exchange messages forever
+        try: 
+            while not self._sde.is_set():
+                rx = asyncio.ensure_future(websocket.recv())
+                tx = asyncio.ensure_future(ccc.outq.get())
+                sd = asyncio.ensure_future(self._sde.wait())
+                done, pending = await asyncio.wait((rx, tx, sd), 
+                                    return_when=asyncio.FIRST_COMPLETED)
+
+                if rx in done:
+                    self.message_from(mplane.model.parse_json(rx.result()), ccc)
+                else:
+                    rx.cancel()
+
+                if tx in done:
+                    await websocket.send(mplane.model.unparse_json(tx.result()))
+                else:
+                    tx.cancel()
+
+                if sd in done:
+                    break
+                else:
+                    sd.cancel()
+        except websockets.exceptions.ConnectionClosed:
+            logger.debug("connection from "+ccc.coid+" closed")
+        finally:
+            logger.debug("shutting down")
+
+    def start_running(self):
+        pass
+
+    def stop_running(self):
+        pass
+
 
 
 ######################################################################
