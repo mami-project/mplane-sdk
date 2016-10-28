@@ -10,6 +10,8 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
+TEST_DURATION = 4
+
 class ComponentTestService():
     def capability(self):
         return mplane.model.message_from_dict({
@@ -56,7 +58,7 @@ def test_basic_component():
 
     # get a spec and fill it in
     spec = mplane.model.Specification(capability=tc.services[0].capability())
-    spec.set_parameter_value('duration.s', 10)
+    spec.set_parameter_value('duration.s', TEST_DURATION)
     spec.set_when(mplane.model.When("now"))
 
     # simulate receipt of the specification
@@ -109,7 +111,7 @@ async def _test_wsservercomponent_client_hello():
 
         # make a specification and fill it in
         spec = mplane.model.Specification(capability=caps[0])
-        spec.set_parameter_value('duration.s', 10)
+        spec.set_parameter_value('duration.s', TEST_DURATION)
         spec.set_when(mplane.model.When("now"))
 
         # ship it
@@ -172,6 +174,7 @@ def test_wsserver_component(delay=30):
 
 def test_client_initiated(delay=30):
     loop = asyncio.get_event_loop()
+    #loop.set_debug(True)
 
     # get a component and kick it off
     tcom = mplane.async_component.WSServerComponent({
@@ -210,7 +213,7 @@ def test_client_initiated(delay=30):
     # invoke it
     spec = loop.run_until_complete(tcli.await_invocation(cap_tol = 'test-async-client', 
                                                         when = mplane.model.When('now'), 
-                                                        params = { 'duration.s': 10 }))
+                                                        params = { 'duration.s': TEST_DURATION }))
     logger.info("Test specification invoked")
 
     # now wait for the result 
@@ -224,11 +227,14 @@ def test_client_initiated(delay=30):
     tcli.stop_running()
     logger.info("Client disconnected")
 
+    loop.run_until_complete(asyncio.sleep(1))
+
     tcom.stop_running()
     logger.info("Component shutdown")
 
 def test_component_initiated(delay=30):
     loop = asyncio.get_event_loop()
+    loop.set_debug(True)
 
     # get a client
     tcli = mplane.async_client.WSServerClient({
@@ -271,7 +277,7 @@ def test_component_initiated(delay=30):
     # invoke it
     spec = loop.run_until_complete(tcli.await_invocation(cap_tol = 'test-async-client', 
                                                         when = mplane.model.When('now'), 
-                                                        params = { 'duration.s': 10 }))
+                                                        params = { 'duration.s': TEST_DURATION }))
 
     logger.info("Test specification invoked")
 
@@ -289,13 +295,10 @@ def test_component_initiated(delay=30):
     tcom.stop_running()
     logger.info("Component disconnected")
 
+    loop.run_until_complete(asyncio.sleep(1))
+
     tcli.stop_running()
     logger.info("Client shutdown")
-
-    # we shouldn't need to do this...
-    loop.stop()
-    loop.run_forever()
-    logger.info("Event loop purged")
 
 if __name__ == "__main__":
     # initialize environment
@@ -305,8 +308,12 @@ if __name__ == "__main__":
 
     #test_basic_component()
     #test_wsserver_component()
-    # logger.info("testing client-initiated...")
-    # test_client_initiated()
-    logger.info("testing component-initiated...")
+    logger.info("######################################################################")
+    logger.info("########### testing client-initiated #################################")
+    logger.info("######################################################################")
+    test_client_initiated()
+    logger.info("######################################################################")
+    logger.info("########### testing component-initiated ##############################")
+    logger.info("######################################################################")
     test_component_initiated()
    

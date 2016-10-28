@@ -1,12 +1,11 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 ##
-# mPlane Software Development Kit
-# Component Framework
+# mPlane Software Development Kit for Python 3
+# Asynchronous Component Framework
 #
-# (c) 2015 mPlane Consortium (http://www.ict-mplane.eu)
-# (c) 2016 MAMI Project (http://mami-project.eu)
-#     Authors: Brian Trammell <brian@trammell.ch>
-#              Stefano Pentassuglia <stefano.pentassuglia@ssbprogetti.it>
+# (c) 2013-2015 mPlane Consortium (http://www.ict-mplane.eu)
+# (c) 2016      MAMI Project (http://mami-project.eu)
+#               Author: Brian Trammell <brian@trammell.ch>
 #             
 # This program is free software: you can redistribute it and/or modify it under
 # the terms of the GNU Lesser General Public License as published by the Free
@@ -25,11 +24,12 @@ import asyncio
 import logging
 import websockets
 import collections
+import uuid
 
 import mplane.model
 import mplane.azn
 import mplane.tls
-import uuid
+import mplane.websocket_runtime
 
 logger = logging.getLogger(__name__)
 
@@ -38,9 +38,9 @@ class Service(object):
     A Service binds a coroutine to an
     mplane.model.Capability provided by a component.
 
-    To use services with an mPlane scheduler, inherit from
-    mplane.component.Service or one of its subclasses
-    and implement run().
+    To make services available with an mPlane component, 
+    inherit from mplane.component.Service or one of its subclasses
+    and implement run(). run() is an asyncio coroutine; blocking operations 
 
     """
     def __init__(self, capability):
@@ -60,7 +60,7 @@ class Service(object):
         it extracts its parameters from a given Specification, and returns 
         its result values in a Result derived therefrom.
 
-        Long-running run() methods should await any blocking call, and
+        run() methods should await any blocking call, and long-running methods
         periodically yield (await asyncio.sleep()). run() methods should
         periodically call check_interrupt() to determine whether they have
         been interrupted, and return a Result if so.
@@ -133,13 +133,13 @@ class ComponentClientContext:
         # Add fields to Result to make this happen.
         pass
 
-    def reply(self, msg):
+    def send(self, msg):
         self.outq.put_nowait(msg)
 
     def __repr__(self):
         return "ComponentClientContext(%s, %s)" % (repr(self.clid), repr(self.url))
 
-class CommonComponent:
+class CommonComponent(mplane.websocket_runtime.CommonEntity):
     """
     Core implementation of a generic asynchronous component.
     Used for common component state management for WSServerComponent 
@@ -148,9 +148,10 @@ class CommonComponent:
     """
 
     def __init__(self, config):
+        super().__init__(config)
+
         # Client component contexts by client ID
         self._ccc = {}
-        self._loop = asyncio.get_event_loop()
 
         # get an authorization object
         self.azn = mplane.azn.Authorization(config)
@@ -187,7 +188,7 @@ class CommonComponent:
         # wait until the task is complete
         done, pending = await asyncio.wait([service_task])
         if service_task in done:
-            ccc.reply(service_task.result())
+            ccc.send(service_task.result())
 
     def _invoke_inner(self, ccc, spec, service):
         # schedule a coroutine to run the service and stash the task
@@ -298,37 +299,11 @@ class CommonComponent:
             logger.warning("component cannot handle message "+repr(msg))
 
         # Stick the JSON reply in our outgoing message queue
-        ccc.reply(reply)
+        ccc.send(reply)
 
 #######################################################################
 # Websocket server component
 #######################################################################
-
-def websocket_clid(websocket, path=None):
-    """
-    Get a client ID from the websocket's peer certificate (for wss:// URLs),
-    allow the client to provide a client ID on the websocket path 
-    (for ws:// URLs), or default to a UUID for anonymous clients
-
-    """ 
-
-    # Extract CID from subject common name 
-    # (see https://docs.python.org/3/library/ssl.html#ssl.SSLSocket.getpeercert)
-    # Problem: WebSocketServerProtocol doesn't implement get_extra_info :(
-    # Possible solution: look at the source and use private fields :(
-    #
-    # peercert = websocket.get_extra_info("peercert", default=None)
-    # if peercert:
-    #     for rdn in peercert['subject']:
-    #         if rdn[0][0] == "commonName":
-    #             return rdn[0][1]
-
-    # No peer cert. Extract CID from path
-    if path and path != "/":
-        return path
-
-    # No peer cert and no path. Generate a UUID for an anonymous client
-    return str(uuid.uuid4())
 
 class WSServerComponent(CommonComponent):
     """
@@ -352,7 +327,7 @@ class WSServerComponent(CommonComponent):
 
     async def serve(self, websocket, path):
         # get my client context
-        ccc = self._client_context(websocket_clid(websocket, path))
+        ccc = self._client_context(mplane.websocket_runtime.websocket_peer_id(websocket, path))
         logger.debug("component got connection from "+ccc.clid)
 
         try:
@@ -363,35 +338,36 @@ class WSServerComponent(CommonComponent):
                     cap_envelope.append_message(service.capability())
             await websocket.send(mplane.model.unparse_json(cap_envelope))
 
-            # now exchange messages forever
-            while not self._sde.is_set():
+            # now exchange messages until shutdown or close
+            await self.handle_websocket(websocket, ccc)
+            # while not self._sde.is_set():
 
-                rx = asyncio.ensure_future(websocket.recv())
-                tx = asyncio.ensure_future(ccc.outq.get())
-                sd = asyncio.ensure_future(self._sde.wait())
+            #     rx = asyncio.ensure_future(websocket.recv())
+            #     tx = asyncio.ensure_future(ccc.outq.get())
+            #     sd = asyncio.ensure_future(self._sde.wait())
+            #     done, pending = await asyncio.wait([rx, tx, sd], 
+            #                         return_when=asyncio.FIRST_COMPLETED)
 
-                done, pending = await asyncio.wait([rx, tx], 
-                                    return_when=asyncio.FIRST_COMPLETED)
+            #     if rx in done:
+            #         try:
+            #             msg = mplane.model.parse_json(rx.result())
+            #         except Exception as e:
+            #             ccc.send(mplane.model.Exception(errmsg="parse error: "+repr(e)))
+            #         else:
+            #             self.message_from(mplane.model.parse_json(rx.result()), ccc)
+            #     else:
+            #         rx.cancel()
 
-                if rx in done:
-                    try:
-                        msg = mplane.model.parse_json(rx.result())
-                    except Exception as e:
-                        ccc.reply(mplane.model.Exception(errmsg="parse error: "+repr(e)))
-                    else:
-                        self.message_from(mplane.model.parse_json(rx.result()), ccc)
-                else:
-                    rx.cancel()
+            #     if tx in done:
+            #         await websocket.send(mplane.model.unparse_json(tx.result()))
+            #     else:
+            #         tx.cancel()
 
-                if tx in done:
-                    await websocket.send(mplane.model.unparse_json(tx.result()))
-                else:
-                    tx.cancel()
+            #     if sd in done:
+            #         break
+            #     else:
+            #         sd.cancel()
 
-                if sd in done:
-                    break
-                else:
-                    sd.cancel()
 
         except websockets.exceptions.ConnectionClosed:
             logger.debug("connection from "+ccc.clid+" closed")
@@ -417,6 +393,7 @@ class WSServerComponent(CommonComponent):
 
 
 
+
 #######################################################################
 # Websocket client component (not yet tested)
 #######################################################################
@@ -428,9 +405,6 @@ class WSClientComponent(CommonComponent):
     """
     def __init__(self, config):
         super().__init__(config)
-
-        # Shutdown event
-        self._sde = asyncio.Event()
 
         self.url = config["Component"]["WSInitiator"]["url"]
         self.tls = mplane.tls.TlsState(config)
@@ -452,31 +426,34 @@ class WSClientComponent(CommonComponent):
                 await websocket.send(mplane.model.unparse_json(cap_envelope))
 
                 # now exchange messages until the shutdown flag is true
-                # FIXME need to wait on SDE too. 
+                await self.handle_websocket(websocket, ccc)
+                # while not self._sde.is_set():
 
-                while not self._sde.is_set():
+                #     rx = asyncio.ensure_future(websocket.recv())
+                #     tx = asyncio.ensure_future(ccc.outq.get())
+                #     sd = asyncio.ensure_future(self._sde.wait())
+                #     done, pending = await asyncio.wait([rx, tx, sd], 
+                #                         return_when=asyncio.FIRST_COMPLETED)
 
-                    rx = asyncio.ensure_future(websocket.recv())
-                    tx = asyncio.ensure_future(ccc.outq.get())
-                    sd = asyncio.ensure_future(self._sde.wait())
+                #     if rx in done:
+                #         try:
+                #             msg = mplane.model.parse_json(rx.result())
+                #         except Exception as e:
+                #             ccc.send(mplane.model.Exception(errmsg="parse error: "+repr(e)))
+                #         else:
+                #             self.message_from(mplane.model.parse_json(rx.result()), ccc)
+                #     else:
+                #         rx.cancel()
 
-                    done, pending = await asyncio.wait([rx, tx, sd], 
-                                        return_when=asyncio.FIRST_COMPLETED)
+                #     if tx in done:
+                #         await websocket.send(mplane.model.unparse_json(tx.result()))
+                #     else:
+                #         tx.cancel()
 
-                    if rx in done:
-                        self.message_from(mplane.model.parse_json(rx.result()), ccc)
-                    else:
-                        rx.cancel()
-
-                    if tx in done:
-                        await websocket.send(mplane.model.unparse_json(tx.result()))
-                    else:
-                        tx.cancel()
-
-                    if sd in done:
-                        break
-                    else:
-                        sd.cancel()
+                #     if sd in done:
+                #         break
+                #     else:
+                #         sd.cancel()
 
             except websockets.exceptions.ConnectionClosed:
                 # FIXME schedule a reconnection attempt
@@ -491,7 +468,10 @@ class WSClientComponent(CommonComponent):
     def stop_running(self):
         logger.debug("signaling shutdown")
         self._sde.set()
-        asyncio.get_event_loop().run_until_complete(self._task)
+        try:
+            asyncio.get_event_loop().run_until_complete(self._task)
+        except Exception as e:
+            logger.debug(repr(e))
 
 
     # def run_until_shutdown(self):

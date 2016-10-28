@@ -1,10 +1,11 @@
 #
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 ##
-# mPlane Protocol Reference Implementation
-# Client SDK API implementation
+# mPlane Protocol Software Development Kit for Python 3
+# Asynchronous Client Framework
 #
 # (c) 2013-2015 mPlane Consortium (http://www.ict-mplane.eu)
+# (c) 2016      the MAMI Project (https://mami-project.eu)
 #               Author: Brian Trammell <brian@trammell.ch>
 #
 # This program is free software: you can redistribute it and/or modify it under
@@ -29,6 +30,7 @@ import collections
 import mplane.model
 import mplane.azn
 import mplane.tls
+import mplane.websocket_runtime
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +71,7 @@ class ClientComponentContext:
     def __repr__(self):
         return "ClientComponentContext(%s, %s)" % (repr(self.coid), repr(self.url))
 
-class CommonClient:
+class CommonClient(mplane.websocket_runtime.CommonEntity):
     """
     Core implementation of a generic asynchronous programmatic client. 
     Keeps track of available capabilities, pending receipts, and
@@ -81,8 +83,10 @@ class CommonClient:
     """
 
     def __init__(self, config):
+        super().__init__(config)
+
+        # client component contexts table
         self._ccc = {}
-        self.config = config
 
         self._token_invoked = {}
         self._token_complete = {}
@@ -350,35 +354,40 @@ class WSClientClient(CommonClient):
             ccc = self._component_context(self.url, self.url) 
 
             try:
-                # now exchange messages until the shutdown flag is true
-                while not self._sde.is_set():
+                await self.handle_websocket(websocket, ccc)
+                # while not self._sde.is_set():
 
-                    rx = asyncio.ensure_future(websocket.recv())
-                    tx = asyncio.ensure_future(ccc.outq.get())
-                    sd = asyncio.ensure_future(self._sde.wait())
-                    done, pending = await asyncio.wait((rx, tx, sd), 
-                                        return_when=asyncio.FIRST_COMPLETED)
+                #     rx = asyncio.ensure_future(websocket.recv())
+                #     tx = asyncio.ensure_future(ccc.outq.get())
+                #     sd = asyncio.ensure_future(self._sde.wait())
+                #     done, pending = await asyncio.wait([rx, tx, sd], 
+                #                         return_when=asyncio.FIRST_COMPLETED)
 
-                    if rx in done:
-                        self.message_from(mplane.model.parse_json(rx.result()), ccc)
-                    else:
-                        rx.cancel()
+                #     if rx in done:
+                #         try:
+                #             msg = mplane.model.parse_json(rx.result())
+                #         except Exception as e:
+                #             ccc.send(mplane.model.Exception(errmsg="parse error: "+repr(e)))
+                #         else:
+                #             self.message_from(mplane.model.parse_json(rx.result()), ccc)
+                #     else:
+                #         rx.cancel()
 
-                    if tx in done:
-                        await websocket.send(mplane.model.unparse_json(tx.result()))
-                    else:
-                        tx.cancel()
+                #     if tx in done:
+                #         await websocket.send(mplane.model.unparse_json(tx.result()))
+                #     else:
+                #         tx.cancel()
 
-                    if sd in done:
-                        break
-                    else:
-                        sd.cancel()
+                #     if sd in done:
+                #         break
+                #     else:
+                #         sd.cancel()
 
             except websockets.exceptions.ConnectionClosed:
                 # FIXME schedule a reconnection attempt
                 logger.debug("connection to "+ccc.coid+" closed") 
             finally:
-                logger.debug("shutting down, outq:"+str(ccc.outq.qsize()))
+                logger.debug("shutting down")
 
     # async def poll_for_result(self, token, poll=1):
     #     while True:
@@ -395,33 +404,6 @@ class WSClientClient(CommonClient):
         logger.debug("signaling shutdown")
         self._sde.set()
         asyncio.get_event_loop().run_until_complete(self._task)
-
-def websocket_coid(websocket, path=None):
-    """
-    Get a component ID from the websocket's peer certificate (for wss:// URLs),
-    allow the component to provide a component ID on the websocket path 
-    (for ws:// URLs), or default to a UUID for anonymous components
-
-    """ 
-
-    # Extract CID from subject common name 
-    # (see https://docs.python.org/3/library/ssl.html#ssl.SSLSocket.getpeercert)
-    # Problem: WebSocketServerProtocol doesn't implement get_extra_info :(
-    # Possible solution: look at the source and use private fields :(
-    #
-    # peercert = websocket.get_extra_info("peercert", default=None)
-    # if peercert:
-    #     for rdn in peercert['subject']:
-    #         if rdn[0][0] == "commonName":
-    #             return rdn[0][1]
-
-    # No peer cert. Extract CID from path
-    if path and path != "/":
-        return path
-
-    # No peer cert and no path. Generate a UUID for an anonymous client
-    return str(uuid.uuid4())
-
 
 class WSServerClient(CommonClient):
     """
@@ -444,33 +426,40 @@ class WSServerClient(CommonClient):
 
     async def serve(self, websocket, path):
         # get my component context
-        ccc = self._component_context(websocket_coid(websocket, path))
+        ccc = self._component_context(mplane.websocket_runtime.websocket_peer_id(websocket, path))
         logger.debug("client got connection from "+ccc.coid)
 
         # now exchange messages forever
         try: 
-            while not self._sde.is_set():
-                rx = asyncio.ensure_future(websocket.recv())
-                tx = asyncio.ensure_future(ccc.outq.get())
-                sd = asyncio.ensure_future(self._sde.wait())
-                done, pending = await asyncio.wait((rx, tx, sd), 
-                                    return_when=asyncio.FIRST_COMPLETED)
+            await self.handle_websocket(websocket, ccc)
 
-                if rx in done:
-                    self.message_from(mplane.model.parse_json(rx.result()), ccc)
-                else:
-                    rx.cancel()
+            # while not self._sde.is_set():
+            #     rx = asyncio.ensure_future(websocket.recv())
+            #     tx = asyncio.ensure_future(ccc.outq.get())
+            #     sd = asyncio.ensure_future(self._sde.wait())
+            #     done, pending = await asyncio.wait([rx, tx, sd], 
+            #                         return_when=asyncio.FIRST_COMPLETED)
 
-                if tx in done:
-                    await websocket.send(mplane.model.unparse_json(tx.result()))
-                else:
-                    tx.cancel()
+            #     if rx in done:
+            #         try:
+            #             msg = mplane.model.parse_json(rx.result())
+            #         except Exception as e:
+            #             ccc.send(mplane.model.Exception(errmsg="parse error: "+repr(e)))
+            #         else:
+            #             self.message_from(mplane.model.parse_json(rx.result()), ccc)
+            #     else:
+            #         rx.cancel()
 
-                if sd in done:            
-                    logger.debug("break on _sde")
-                    break
-                else:
-                    sd.cancel()
+            #     if tx in done:
+            #         await websocket.send(mplane.model.unparse_json(tx.result()))
+            #     else:
+            #         tx.cancel()
+
+            #     if sd in done:
+            #         break
+            #     else:
+            #         sd.cancel()
+
         except websockets.exceptions.ConnectionClosed:
             logger.debug("connection from "+ccc.coid+" closed")
         finally:
@@ -483,6 +472,8 @@ class WSServerClient(CommonClient):
     def stop_running(self):
         self._sde.set()
         self.wssvr.close()
-        asyncio.get_event_loop().run_until_complete(self.wssvr.wait_closed())
-
+        try:
+            asyncio.get_event_loop().run_until_complete(self.wssvr.wait_closed())
+        except Exception as e:
+            logger.debug(repr(e))
 
