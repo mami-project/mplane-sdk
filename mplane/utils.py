@@ -23,7 +23,6 @@ import re
 import mplane.model
 import json
 import urllib3
-import configparser
 
 
 def read_setting(filepath, param):

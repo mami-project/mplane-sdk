@@ -22,54 +22,23 @@ import mplane.client
 import mplane.utils
 import mplane.tls
 
-from prompt_toolkit import async_prompt
-from prompt_toolkit.completion import Completer, Completion
+from mplane.shell import AsyncPromptShell
 
-import sys
-import traceback
-import logging
-import urllib3
-import argparse
-import configparser
-import shlex
-import json
-from time import sleep
-
-
-# very much a work in progress
-
-class AsyncPromptShell:
-
-    def __init__(self, prompt, completer=None):
-        self.prompt = prompt
-        self.completer = completer
-
-    async def dispatch():
-        # display a prompt and get input
-        text = await async_prompt(self.prompt, completer=self.completer)
-
-        # split into command and args
-        args = text.split(" ")
-        cmd = args.shift()
-
-        try:
-            await getattr(self, "do_"+cmd)(*args)
-        except AttributeError:
-            print("No such command: "+cmd)
-            # FIXME: list commands dynamically
-        except Exception as e:
-            # FIXME: print traceback if in traceback mode
+from prompt_toolkit.completion import Completer
 
 class MpcliCompleter(Completer):
     def get_completions(self, document, complete_event):
         # dispatch to correct command context
         pass
 
-
 class MpcliShell(AsyncPromptShell):
 
     def __init__(self):
         super().__init__("|mpcli| ", MpcliCompleter())
+
+if __name__ == "__main__":
+
+    AsyncPromptShell("|test| ").go()
 
 ### 
 ### Old ClientShell based code goes here
@@ -697,7 +666,6 @@ class MpcliShell(AsyncPromptShell):
 #         print("An exception occurred:")
 #         print(e)
 #         if self._print_tracebacks:
-#             traceback.print_tb(sys.exc_info()[2])
 #         print("You can try to continue, but client state may be inconsistent.")
 
 # if __name__ == "__main__":
