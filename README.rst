@@ -56,17 +56,16 @@ using Sphinx. Reasonably current Sphinx documentation can be read online
 
 -  ``mplane.model``: Information model and JSON representation of mPlane
    messages.
--  ``mplane.scheduler``: Component specification scheduler. Maps
-   capabilities to Python code that implements them (in ``Service``) and
-   keeps track of running specifications and associated results (``Job``
-   and ``MultiJob``).
 -  ``mplane.tls``: Handles TLS, mapping local and peer certificates to
    identities and providing TLS connectivity over HTTPS.
 -  ``mplane.azn``: Handles access control, mapping identities to roles
    and authorizing roles to use specific services.
--  ``mplane.client``: mPlane client framework. Handles client-initiated
-   (``HttpClient``) and component-initiated (``ListenerHttpClient``)
-   workflows.
+-  ``mplane.client``: mPlane client framework. Handles client-initiated 
+   (``WSClientClient``) and component-initiated (``WSServerClient``) workflows.
+-  ``mplane.component``: mPlane component framework. Handles client-initiated 
+   (``WSServerComponent``) and component-initiated (``WSClientComponent``) 
+   workflows. Defines the ``Service`` interface for implementing services 
+   to run on components.
 
 There are two scripts installed with the package, as well:
 
@@ -78,9 +77,9 @@ mPlane SDK Configuration Files
 ------------------------------
 
 The TLS state, access control, client framework, command-line client,
-and component runtime use a unified configuration file in Windows INI
-file format (as supported by the Python standard library
-``configparser`` module).
+and component runtime use a unified configuration file in JSON format.
+
+.. note:: Rewrite this section for JSON configuration.
 
 The following sections and keys are supported/required by each module:
 
@@ -144,9 +143,9 @@ both component-initiated and client-initiated workflows. To implement a
 component for use with this framework:
 
 -  Implement each measurement, query, or other action performed by the
-   component as a subclass of mplane.scheduler.Service. Each service is
+   component as a subclass of mplane.component.Service. Each service is
    bound to a single capability. Your service must implement at least
-   the mplane.scheduler.Service.run(self, specification,
+   the mplane.component.Service.run(self, specification,
    check\_interrupt) method.
 
 -  Implement a ``services`` function in your module that takes a set of
@@ -168,8 +167,7 @@ component for use with this framework:
     module: mplane.components.mycomponent
     local-ip-address: 10.2.3.4
 
-**[*Editor's Note:* need to define how to configure component.py for
-each workflow.]**
+.. note:: need to define how to configure component.py for each workflow
 
 -  Run ``mpcom`` to start your component. The ``--config`` argument
    points to the configuration file to use.

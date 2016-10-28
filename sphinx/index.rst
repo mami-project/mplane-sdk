@@ -14,11 +14,6 @@ module mplane.model
 .. automodule:: mplane.model
    :members:
 
-module mplane.scheduler
--------------------
-.. automodule:: mplane.scheduler
-   :members:
-
 module mplane.client
 -------------------
 .. automodule:: mplane.client
@@ -53,7 +48,7 @@ The mPlane Client Shell is a simple client intended for debugging of mPlane infr
 
 The component runtime provides a framework for building components for both component-initiated and client-initiated workflows. To implement a component for use with this framework:
 
-- Implement each measurement, query, or other action performed by the component as a subclass of :class:`mplane.scheduler.Service`. Each service is bound to a single capability. Your service must implement at least :func:`mplane.scheduler.Service.run`.
+- Implement each measurement, query, or other action performed by the component as a subclass of :class:`mplane.component.Service`. Each service is bound to a single capability. Your service must implement at least :func:`mplane.component.Service.run`.
 
 - Implement a ``services`` function in your module that takes a set of keyword arguments derived from the configuration file section, and returns a list of Services provided by your component. For example:
 

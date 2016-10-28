@@ -21,7 +21,7 @@
 #
 
 import mplane.model
-import mplane.scheduler
+import mplane.component
 import mplane.utils
 from datetime import datetime
 
@@ -50,7 +50,7 @@ def loopback_test_capability():
         """
     )
 
-class LoopbackTestService(mplane.scheduler.Service):
+class LoopbackTestService(mplane.component.Service):
     """
     This class handles the capabilities exposed by the component:
     executes them, and fills the results
@@ -60,11 +60,14 @@ class LoopbackTestService(mplane.scheduler.Service):
     def __init__(self, cap):
         super().__init__(cap)
 
-    def run(self, spec, check_interrupt):
+    async def run(self, spec, check_interrupt):
         """ Run a loopback test: copy the input string to the output """
 
         res = mplane.model.Result(specification=spec)
         res.set_when(mplane.model.When(a=datetime.utcnow()))
         res.set_result_value("test.output",
                              spec.get_parameter_value("test.input"))
+
+        await asyncio.sleep(0)
+
         return res

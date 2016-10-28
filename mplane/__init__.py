@@ -5,16 +5,17 @@ This module provides software development kit for building applications on top o
 
 :mod:`mplane.model` implements the mPlane protocol information model: message
 types, the element registry, and various support classes. On top of the
-information model, the :mod:`mplane.scheduler` module defines a framework for
+information model, the :mod:`mplane.component` module defines a framework for
 binding :class:`mplane.model.Capability` classes to runnable code, and for
-invoking that code on the receipt of mPlane Statements; this is used to build
-clients and components.
+invoking that code on the receipt of mPlane Statements.
 
-The :mod:`mplane.client` module defines interfaces for building clients; the    ``mpcli`` script provides a simple command-line interface to this client.
+The :mod:`mplane.client` module defines interfaces for building clients; the    
+``mpcli`` script provides a simple command-line interface to this client.
 
-The :mod:`mplane.component` module defines interfaces for building components; the component runtime can be started by running the ``mpcom`` script.
+The :mod:`mplane.component` module defines interfaces for building components; 
+the component runtime can be started by running the ``mpcom`` script.
 
-This software is copyright 2013-2015 the mPlane Consortium.
+This software is copyright 2013-2015 the mPlane Consortium and copyright 2016 the MAMI project.
 It is made available under the terms of the
 `GNU Lesser General Public License <http://www.gnu.org/licenses/lgpl.html>`_,
 version 3 or, at your option, any later version.
@@ -22,4 +23,5 @@ version 3 or, at your option, any later version.
 """
 
 from . import model
-from . import scheduler
+from . import client
+from . import component

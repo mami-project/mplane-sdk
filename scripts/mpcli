@@ -22,8 +22,10 @@ import mplane.client
 import mplane.utils
 import mplane.tls
 
+from prompt_toolkit import async_prompt
+from prompt_toolkit.completion import Completer, Completion
+
 import sys
-import cmd
 import traceback
 import logging
 import urllib3
@@ -33,653 +35,693 @@ import shlex
 import json
 from time import sleep
 
-class ClientShell(cmd.Cmd):
 
-    intro = 'mPlane client shell (rev 29.1.2016, MAMI fork)\n'\
-            'Type help or ? to list commands. ^D to exit.\n'
-    prompt = '|mplane| '
+# very much a work in progress
 
-    def __init__(self, config):
-        # We're using our own root.
+class AsyncPromptShell:
 
-        # FIXME HACK
-        # some urllib3 versions let you disable warnings about untrusted CAs,
-        # which we use a lot in the project demo. Try to disable warnings if
-        # we can.
-        try:
-            urllib3.disable_warnings()
-        except:
-            pass
+    def __init__(self, prompt, completer=None):
+        self.prompt = prompt
+        self.completer = completer
 
-        if config is not None:
-            # preload any registries necessary
-            if "Registries" in config:
-                if "preload" in config["Registries"]:
-                    for reg in config["Registries"]["preload"]:
-                        mplane.model.preload_registry(reg)
-                if "default" in config["Registries"]:
-                    registry_uri = config["Registries"]["default"]
-                else:
-                    registry_uri = None
-            else:
-                registry_uri = None
-        else:
-            registry_uri = None
+    async def dispatch():
+        # display a prompt and get input
+        text = await async_prompt(self.prompt, completer=self.completer)
 
-        # load default registry
-        mplane.model.initialize_registry(registry_uri)
-
-        super().__init__()
-        tls_state = mplane.tls.TlsState(config)
-        self._defaults = {}
-        self._when = None
-
-        self.exited = False
-
-        # don't print tracebacks by default
-        self._print_tracebacks = False
-
-        if config is None \
-                or "Client" not in config \
-                or "Initiator" in config["Client"] \
-                or "Listener" not in config["Client"]:
-            
-            # default to initiator without any preconfig
-            self._initiator = True
-            self._client = mplane.client.HttpInitiatorClient(tls_state=tls_state)
-            
-            # preconfig if we have a cap uri
-            if config is not None \
-                    and "Client" in config \
-                    and "Initiator" in config["Client"] \
-                    and "capability-url" in config["Client"]["Initiator"]:
-
-                self.do_seturl(config["Client"]["Initiator"]["capability-url"])
-                self.do_getcap(config["Client"]["Initiator"]["capability-url"])
-        elif "Listener" in config["Client"]:
-            self._initiator = False
-            self._client = mplane.client.HttpListenerClient(config=config, tls_state=tls_state)
-        else:
-            raise ValueError("Need either a 'Initiator' or 'Listener' under 'Client' in " + args.config)
-
-    def do_seturl(self, arg):
-        """
-        Set the default URL for this client.
-        The default URL is the URL that will be used to invoke
-        capabilities which do not have an explicit link.
-
-        Usage: seturl [url]
-
-        """
-        try:
-            url = arg.split()[0]
-        except:
-            print("Usage: seturl [url]")
-            return
-
-        if self._initiator:
-            self._client.set_default_url(url)
-        else:
-            print("This command can only be used in client-initiated workflows")
-            return
-
-    def do_getcap(self, arg):
-        """
-        Retrieve capabilities from a given URL.
-
-        Usage: getcap [url]
-
-        """
-        if self._initiator is True:
-            try:
-                url = arg.split()[0]
-                url = urllib3.util.parse_url(url)
-                if url.host is None or url.port is None:
-                    print("Bad format for url")
-                    return
-            except:
-                print("Usage: getcap [url]")
-                return
-
-            self._client.retrieve_capabilities(url)
-
-            print("ok")
-        else:
-            print("This command can only be used in client-initiated workflows")
-            return
-
-    def do_listcap(self, arg):
-        """
-        List available capabilities by label (if available) or token
-        (for unlabeled capabilities)
-
-        Usage: listcap
-
-        """
-        for label in sorted(self._client.capability_labels()):
-            print("Capability %s (token %s)" %
-                  (label, self._client.capability_for(label).get_token()))
-
-        for token in sorted(self._client.capability_tokens()):
-            cap = self._client.capability_for(token)
-            if cap.get_label() is None:
-                print("Capability (token %s)" % (token))
-
-    def do_showcap(self, arg):
-        """
-        Show details for a capability by label or token
-
-        Usage: showcap [label-or-token]
-
-        """
-        try:
-            print(mplane.model.render_text(self._client.capability_for(arg)))
-        except:
-            print("Usage: showcap [label-or-token]")
-            return
-
-    def complete_showcap(self, text, line, start_index, end_index):
-        """Tab-complete known capability labels and tokens in first position"""
-
-        matches = []
-        beginning = line[len("showcap "):]
-        for label in self._client.capability_labels():
-            if label.startswith(beginning):
-                matches.append(label[len(beginning) - len(text):])
-
-        for token in self._client.capability_tokens():
-            if token.startswith(beginning):
-                matches.append(token[len(beginning) - len(text):])
-        return matches
-
-    def do_when(self, arg):
-        """
-        Get or set a default temporal scope to use for capability
-        invocation.
-
-        Usage: when
-        Usage: when [temporal-scope]
-
-        """
-        if len(arg) > 0:
-            try:
-                self._when = mplane.model.When(arg)
-            except:
-                print("Invalid temporal scope "+arg)
-                return
-
-        print("when = "+str(self._when))
-
-    def do_set(self, arg):
-        """
-        Set a default parameter value for subsequent capability
-        invocation.
-
-        Usage: set [parameter-name] [value] ([value] ...)
-
-        """
-        try:
-            sarg = arg.split(maxsplit = 1)
-            key = sarg.pop(0)
-            val = sarg[0]
-            self._defaults[key] = val
-            print(key + " = " + val)
-        except:
-            print("Couldn't set default "+arg)
-
-    def complete_set(self, text, line, start_index, end_index):
-        """Tab-complete the set of names in the registry in first position"""
-
-        matches = []
-        beginning = line[len("set "):]
-        for key in self._defaults:
-            if key.startswith(beginning):
-                matches.append(key[len(beginning) - len(text):])
-        return matches
-
-    def do_unset(self, arg):
-        """
-        Unset values for previously set default parameters.
-        Without an argument, clears all defaults.
-
-        Usage: unset
-        Usage: unset [parameter-name] ([parameter-name] ...)
-
-        """
-        if len(arg) > 0:
-            try:
-                keys = arg.split()
-                for key in keys:
-                    del self._defaults[key]
-            except:
-                print("Couldn't unset default(s) "+arg)
-                return
-        else:
-            self._defaults.clear()
-
-        print("ok")
-
-    def complete_unset(self, text, line, start_index, end_index):
-        """Tab-complete the set of defaults in any position"""
-
-        matches = []
-        beginning = line[len("unset "):]
-        for key in self._defaults:
-            if key.startswith(beginning):
-                matches.append(key[len(beginning) - len(text):])
-        return matches
-
-    def do_show(self, arg):
-        """
-        Show values for parameter defaults, or all values
-        if no parameter names given
-
-        Usage: show
-        Usage: show [parameter-name] ([parameter-name] ...)
-
-        """
-        if len(arg) > 0:
-            try:
-                for key in arg.split():
-                    val = self._defaults[key]
-                    print(key + " = " + str(val))
-            except:
-                print("No such default "+key)
-        else:
-            print("%4u defaults" % len(self._defaults))
-            for key, val in self._defaults.items():
-                print(key + " = " + str(val))
-
-    def complete_show(self, text, line, start_index, end_index):
-        """Tab-complete the set of defaults in any position"""
-
-        matches = []
-        beginning = line[len("show "):]
-        for key in self._defaults:
-            if key.startswith(beginning):
-                matches.append(key[len(beginning) - len(text):])
-        return matches
-
-    def do_runcap(self, arg):
-        """
-        Invoke a capability, identified by label or token. Uses any
-        default temporal scope set by a previous when command, and any
-        applicable default parameters. Parameters and temporal
-        scopes required for the capability but not present are prompted for.
-
-        The optional second argument sets a label for the specification (which
-        will apply to the receipt and results as well). If no relabel is given,
-        the specification will have the same label as the capability, with a
-        serial number attached.
-
-        Usage: runcap [label-or-token] ([relabel])
-
-        """
+        # split into command and args
+        args = text.split(" ")
+        cmd = args.shift()
 
         try:
-            arglist = arg.split()
-
-            if len(arglist) >= 1:
-                capspec = arglist[0]
-                if len(arglist) >= 2:
-                    relabel = arglist[1]
-                else:
-                    relabel = None
-            else:
-                print("Usage: runcap [label-or-token] ([relabel])")
-                return
-        except:
-            print("Usage: runcap [label-or-token] ([relabel])")
-            return
-
-        # Retrieve a capability
-        cap = self._client.capability_for(capspec)
-
-        # Prompt for when if missing or inappropriate
-        while self._when is None or \
-              not self._when.follows(cap.when()):
-            sys.stdout.write("|when| = ")
-            self._when = mplane.model.When(input())
-
-        # Prompt for missing capabilities (saving these in defaults)
-        params = self._get_params(cap)
-
-        # Now invoke it
-        self._client.invoke_capability(cap.get_token(), self._when, params, relabel)
-        print("ok")
-
-    def complete_runcap(self, text, line, start_index, end_index):
-        """Tab-complete known capability labels and tokens in first position"""
-
-        matches = []
-        beginning = line[len("runcap "):]
-        for label in self._client.capability_labels():
-            if label.startswith(beginning):
-                matches.append(label[len(beginning) - len(text):])
-
-        for token in self._client.capability_tokens():
-            if token.startswith(beginning):
-                matches.append(token[len(beginning) - len(text):])
-        return matches
-
-    def do_savespec(self, arg):
-        """
-        Save capabilities and parameters as specifications in an envelope to a file.
-        If no valid parameters are defined, they will be prompted for.
-
-        If no labels or tokens are given, all capabilities get saved.
-
-        Usage: savespec [filepath] ([label-or-token] ...)
-
-        """
-        #shlex handles quotes in paths correctly
-        arg = shlex.split(arg)
-
-        if(len(arg) < 1):
-            print("Usage: savespec [filepath] ([label-or-token])")
-            return
-        path = arg.pop(0)
-
-        caps = []
-        if(len(arg) == 0):
-            for token in sorted(self._client.capability_tokens()):
-                caps.append(self._client.capability_for(token))
-        else:
-            for label in arg:
-                caps.append(self._client.capability_for(label))
-
-        env = mplane.model.Envelope()
-        for cap in caps:
-            spec = mplane.model.Specification(capability = cap)
-            print("Processing " + spec.get_label() + "...")
-            # set temporal scope
-            if self._when is not None:
-                spec.set_when(self._when)
-            # fill in parameters
-            params = self._get_params(cap)
-            for pname in spec.parameter_names():
-                if spec.get_parameter_value(pname) is None:
-                    if pname in params:
-                        spec.set_parameter_value(pname, params[pname])
-            try:
-                spec.validate()
-            except ValueError:
-                print(spec.get_label() + " has missing parameters")
-                continue
-            env.append_message(spec)
-
-        env_json = mplane.model.unparse_json(env)
-        with open(path, "w") as f:
-            print(env_json, file = f)
-        print("ok")
-
-    def do_loadspec(self, arg):
-        """
-        Loads a specification from a file and sets all parameters to the found values.
-        All parameters except "when" will be loaded.
-        The specification needs to be inside an envelope.
-
-        Usage: loadspec [filepath] [label]
-
-        """
-        #shlex handles quotes in paths correctly
-        arg = shlex.split(arg)
-
-        if(len(arg) < 2):
-            print("Usage: loadspec [filepath] [label]")
-            return
-
-        path = arg.pop(0)
-        label = arg.pop(0)
-        spec = self._spec_from_file(path, label)
-
-        self._defaults.update(spec.parameter_values())
-        print("ok")
-
-    def do_loadrunspec(self, arg):
-        """
-        Loads a specification from a file, runs it, and sets all parameters to the found values.
-        All parameters except "when" will be loaded.
-        The specification needs to be inside an envelope.
-
-        Usage: loadrunspec [filepath] [label]
-
-        """
-        #shlex handles quotes in paths correctly
-        arg = shlex.split(arg)
-
-        if(len(arg) < 2):
-            print("Usage: loadrunspec [filepath] [label]")
-            return
-
-        path = arg.pop(0)
-        label = arg.pop(0)
-        
-        cap = self._client.capability_for(label)
-        spec = self._spec_from_file(path, label)
-        spec.fulfills(cap)
-        self._defaults.update(spec.parameter_values())
-
-        #Prompt for when if missing or inappropriate
-        while self._when is None or \
-              not self._when.follows(cap.when()):
-            sys.stdout.write("|when| = ")
-            self._when = mplane.model.When(input())
-
-        #invoke capability
-        self._client.invoke_capability(label, self._when, self._defaults)
-        print("ok")
-
-    def _spec_from_file(self, filepath, label):
-        """
-        Loads and returns a specification with the given label from a file
-        """
-        env = mplane.model.Envelope()
-        spec = None
-
-        with open(filepath, "r") as f:
-            env = mplane.model.parse_json(f.read())
-
-        for message in env.messages():
-            if message.get_label() == label:
-                spec = message
-                break
-        if spec is None:
-            raise ValueError("Couldn't find specification with label " + label + " in " + filepath)
-        return spec
-
-    def _get_params(self, cap):
-        """
-        Asks user for parameter values of a capability, if missing
-        """
-        params = {}
-        for pname in sorted(cap.parameter_names()):
-            while pname not in self._defaults or \
-                  not cap.can_set_parameter_value(pname, self._defaults[pname]):
-                single_val = cap.get_single_parameter_value(pname)
-                if single_val is not None:
-                    self._defaults[pname] = str(single_val)
-                    sys.stdout.write(pname + " = " + str(single_val) + "\n")
-                else:
-                    sys.stdout.write(pname + " = ")
-                    self._defaults[pname] = input()
-            params[pname] = self._defaults[pname]
-        return params
-
-    def do_listmeas(self, arg):
-        """
-        List running/completed measurements by label and/or token
-
-        Usage: listmeas
-
-        """
-        for label in self._client.receipt_labels():
-            rec = self._client.result_for(label)
-            if isinstance(rec, mplane.model.Receipt):
-                print("Receipt %s (token %s): %s" %
-                      (label, rec.get_token(), rec.when()))
-
-        for token in self._client.receipt_tokens():
-            rec = self._client.result_for(token)
-            if isinstance(rec, mplane.model.Receipt):
-                if rec.get_label() is None:
-                    print("Receipt (token %s): %s" % (token, rec.when()))
-
-        for label in self._client.result_labels():
-            res = self._client.result_for(label)
-            if not isinstance(res, mplane.model.Exception):
-                print("Result  %s (token %s): %s" %
-                      (label, res.get_token(), res.when()))
-
-        for token in self._client.result_tokens():
-            res = self._client.result_for(token)
-            if isinstance(res, mplane.model.Exception):
-                print(res.__repr__())
-            elif res.get_label() is None:
-                print("Result  (token %s): %s" % (token, res.when()))
-
-    def do_stopmeas(self, arg):
-        """
-        Interrupts the measurement identified by label and/or token
-
-        Usage: stopmeas [label-or-token]
-
-        """
-        try:
-            meas_tol = arg.split()[0]
-        except:
-            print("Usage: stopmeas [label-or-token]")
-            return
-
-        self._client.interrupt_capability(meas_tol)
-
-    def complete_stopmeas(self, text, line, start_index, end_index):
-        """Tab-complete known capability labels and tokens in first position"""
-
-        matches = []
-        beginning = line[len("stopmeas "):]
-        for label in self._client.receipt_labels():
-            if label.startswith(beginning):
-                matches.append(label[len(beginning) - len(text):])
-        for token in self._client.receipt_tokens():
-            if token.startswith(beginning):
-                matches.append(token[len(beginning) - len(text):])
-        for label in self._client.result_labels():
-            if label.startswith(beginning):
-                matches.append(label[len(beginning) - len(text):])
-        for token in self._client.result_tokens():
-            if token.startswith(beginning):
-                matches.append(token[len(beginning) - len(text):])
-        return matches
-
-    def do_showmeas(self, arg):
-        """
-        Show details of measurements by label and/or token
-
-        Usage: showmeas [label-or-token]
-
-        """
-        try:
-            meas = arg.split()[0]
-        except:
-            print("Usage: showmeas [label-or-token]")
-            return
-
-        res = self._client.result_for(meas)
-        mplane.model.render_text(res)
-
-    def complete_showmeas(self, text, line, start_index, end_index):
-        """Tab-complete known capability labels and tokens in first position"""
-
-        matches = []
-        beginning = line[len("showmeas "):]
-        for label in self._client.receipt_labels():
-            if label.startswith(beginning):
-                matches.append(label[len(beginning) - len(text):])
-        for token in self._client.receipt_tokens():
-            if token.startswith(beginning):
-                matches.append(token[len(beginning) - len(text):])
-        for label in self._client.result_labels():
-            if label.startswith(beginning):
-                matches.append(label[len(beginning) - len(text):])
-        for token in self._client.result_tokens():
-            if token.startswith(beginning):
-                matches.append(token[len(beginning) - len(text):])
-        return matches
-
-    def do_savemeas(self, arg):
-        """
-        Save results of measurements in an envelope to a file.
-
-        If no labels or tokens are given, all results get saved.
-
-        Usage: savemeas [filepath] ([label-or-token] ...)
-
-        """
-        #shlex handles quotes in paths correctly
-        arg = shlex.split(arg)
-
-        if(len(arg) < 1):
-            print("Usage: savemeas [filepath] ([label-or-token])")
-            return
-        path = arg.pop(0)
-
-        results = []
-        if(len(arg) == 0):
-            for token in self._client.result_tokens():
-                results.append(self._client.result_for(token))
-        else:
-            for label in arg:
-                results.append(self._client.result_for(label))
-
-        env = mplane.model.Envelope()
-        for res in results:
-            env.append_message(res)
-
-        env_json = mplane.model.unparse_json(env)
-        with open(path, "w") as f:
-            print(env_json, file = f)
-        print("ok")
-
-    def do_tbenable(self, arg):
-        """Enable tracebacks on uncaught exceptions"""
-        self._print_tracebacks = True
-
-    def do_EOF(self, arg):
-        """Exit the shell by typing ^D"""
-        print("Ciao!")
-        self.exited = True
-        return True
-
-    def handle_uncaught(self, e):
-        print("An exception occurred:")
-        print(e)
-        if self._print_tracebacks:
-            traceback.print_tb(sys.exc_info()[2])
-        print("You can try to continue, but client state may be inconsistent.")
-
-if __name__ == "__main__":
-
-    # start logging
-    logging.basicConfig(format='[%(asctime)s] %(levelname)s: %(message)s', level=logging.DEBUG)
-
-    parser = argparse.ArgumentParser(description="mPlane generic testing client")
-    parser.add_argument('--config', metavar="config-file",
-                        help="Configuration file")
-    args = parser.parse_args()
-
-    # check if conf file parameter has been inserted in the command line
-    if not args.config:
-        config = None
-    else:
-        # Read the configuration file
-        config = mplane.utils.get_config(args.config)
-
-    # create a shell
-    cs = ClientShell(config)
-
-    while not cs.exited:
-        try:
-            cs.cmdloop()
+            await getattr(self, "do_"+cmd)(*args)
+        except AttributeError:
+            print("No such command: "+cmd)
+            # FIXME: list commands dynamically
         except Exception as e:
-            cs.handle_uncaught(e)
+            # FIXME: print traceback if in traceback mode
+
+class MpcliCompleter(Completer):
+    def get_completions(self, document, complete_event):
+        # dispatch to correct command context
+        pass
+
+
+class MpcliShell(AsyncPromptShell):
+
+    def __init__(self):
+        super().__init__("|mpcli| ", MpcliCompleter())
+
+### 
+### Old ClientShell based code goes here
+###
+
+# class ClientShell(cmd.Cmd):
+
+#     intro = 'mPlane client shell (rev 28.10.2016, MAMI fork)\n'\
+#             'Type help or ? to list commands. ^D to exit.\n'
+#     prompt = '|mplane| '
+
+#     def __init__(self, config):
+#         # We're using our own root.
+
+#         # FIXME HACK
+#         # some urllib3 versions let you disable warnings about untrusted CAs,
+#         # which we use a lot in the project demo. Try to disable warnings if
+#         # we can.
+#         try:
+#             urllib3.disable_warnings()
+#         except:
+#             pass
+
+#         if config is not None:
+#             # preload any registries necessary
+#             if "Registries" in config:
+#                 if "preload" in config["Registries"]:
+#                     for reg in config["Registries"]["preload"]:
+#                         mplane.model.preload_registry(reg)
+#                 if "default" in config["Registries"]:
+#                     registry_uri = config["Registries"]["default"]
+#                 else:
+#                     registry_uri = None
+#             else:
+#                 registry_uri = None
+#         else:
+#             registry_uri = None
+
+#         # load default registry
+#         mplane.model.initialize_registry(registry_uri)
+
+#         super().__init__()
+#         tls_state = mplane.tls.TlsState(config)
+#         self._defaults = {}
+#         self._when = None
+
+#         self.exited = False
+
+#         # don't print tracebacks by default
+#         self._print_tracebacks = False
+
+#         if config is None \
+#                 or "Client" not in config \
+#                 or "Initiator" in config["Client"] \
+#                 or "Listener" not in config["Client"]:
+            
+#             # default to initiator without any preconfig
+#             self._initiator = True
+#             self._client = mplane.client.HttpInitiatorClient(tls_state=tls_state)
+            
+#             # preconfig if we have a cap uri
+#             if config is not None \
+#                     and "Client" in config \
+#                     and "Initiator" in config["Client"] \
+#                     and "capability-url" in config["Client"]["Initiator"]:
+
+#                 self.do_seturl(config["Client"]["Initiator"]["capability-url"])
+#                 self.do_getcap(config["Client"]["Initiator"]["capability-url"])
+#         elif "Listener" in config["Client"]:
+#             self._initiator = False
+#             self._client = mplane.client.HttpListenerClient(config=config, tls_state=tls_state)
+#         else:
+#             raise ValueError("Need either a 'Initiator' or 'Listener' under 'Client' in " + args.config)
+
+#     def do_seturl(self, arg):
+#         """
+#         Set the default URL for this client.
+#         The default URL is the URL that will be used to invoke
+#         capabilities which do not have an explicit link.
+
+#         Usage: seturl [url]
+
+#         """
+#         try:
+#             url = arg.split()[0]
+#         except:
+#             print("Usage: seturl [url]")
+#             return
+
+#         if self._initiator:
+#             self._client.set_default_url(url)
+#         else:
+#             print("This command can only be used in client-initiated workflows")
+#             return
+
+#     def do_getcap(self, arg):
+#         """
+#         Retrieve capabilities from a given URL.
+
+#         Usage: getcap [url]
+
+#         """
+#         if self._initiator is True:
+#             try:
+#                 url = arg.split()[0]
+#                 url = urllib3.util.parse_url(url)
+#                 if url.host is None or url.port is None:
+#                     print("Bad format for url")
+#                     return
+#             except:
+#                 print("Usage: getcap [url]")
+#                 return
+
+#             self._client.retrieve_capabilities(url)
+
+#             print("ok")
+#         else:
+#             print("This command can only be used in client-initiated workflows")
+#             return
+
+#     def do_listcap(self, arg):
+#         """
+#         List available capabilities by label (if available) or token
+#         (for unlabeled capabilities)
+
+#         Usage: listcap
+
+#         """
+#         for label in sorted(self._client.capability_labels()):
+#             print("Capability %s (token %s)" %
+#                   (label, self._client.capability_for(label).get_token()))
+
+#         for token in sorted(self._client.capability_tokens()):
+#             cap = self._client.capability_for(token)
+#             if cap.get_label() is None:
+#                 print("Capability (token %s)" % (token))
+
+#     def do_showcap(self, arg):
+#         """
+#         Show details for a capability by label or token
+
+#         Usage: showcap [label-or-token]
+
+#         """
+#         try:
+#             print(mplane.model.render_text(self._client.capability_for(arg)))
+#         except:
+#             print("Usage: showcap [label-or-token]")
+#             return
+
+#     def complete_showcap(self, text, line, start_index, end_index):
+#         """Tab-complete known capability labels and tokens in first position"""
+
+#         matches = []
+#         beginning = line[len("showcap "):]
+#         for label in self._client.capability_labels():
+#             if label.startswith(beginning):
+#                 matches.append(label[len(beginning) - len(text):])
+
+#         for token in self._client.capability_tokens():
+#             if token.startswith(beginning):
+#                 matches.append(token[len(beginning) - len(text):])
+#         return matches
+
+#     def do_when(self, arg):
+#         """
+#         Get or set a default temporal scope to use for capability
+#         invocation.
+
+#         Usage: when
+#         Usage: when [temporal-scope]
+
+#         """
+#         if len(arg) > 0:
+#             try:
+#                 self._when = mplane.model.When(arg)
+#             except:
+#                 print("Invalid temporal scope "+arg)
+#                 return
+
+#         print("when = "+str(self._when))
+
+#     def do_set(self, arg):
+#         """
+#         Set a default parameter value for subsequent capability
+#         invocation.
+
+#         Usage: set [parameter-name] [value] ([value] ...)
+
+#         """
+#         try:
+#             sarg = arg.split(maxsplit = 1)
+#             key = sarg.pop(0)
+#             val = sarg[0]
+#             self._defaults[key] = val
+#             print(key + " = " + val)
+#         except:
+#             print("Couldn't set default "+arg)
+
+#     def complete_set(self, text, line, start_index, end_index):
+#         """Tab-complete the set of names in the registry in first position"""
+
+#         matches = []
+#         beginning = line[len("set "):]
+#         for key in self._defaults:
+#             if key.startswith(beginning):
+#                 matches.append(key[len(beginning) - len(text):])
+#         return matches
+
+#     def do_unset(self, arg):
+#         """
+#         Unset values for previously set default parameters.
+#         Without an argument, clears all defaults.
+
+#         Usage: unset
+#         Usage: unset [parameter-name] ([parameter-name] ...)
+
+#         """
+#         if len(arg) > 0:
+#             try:
+#                 keys = arg.split()
+#                 for key in keys:
+#                     del self._defaults[key]
+#             except:
+#                 print("Couldn't unset default(s) "+arg)
+#                 return
+#         else:
+#             self._defaults.clear()
+
+#         print("ok")
+
+#     def complete_unset(self, text, line, start_index, end_index):
+#         """Tab-complete the set of defaults in any position"""
+
+#         matches = []
+#         beginning = line[len("unset "):]
+#         for key in self._defaults:
+#             if key.startswith(beginning):
+#                 matches.append(key[len(beginning) - len(text):])
+#         return matches
+
+#     def do_show(self, arg):
+#         """
+#         Show values for parameter defaults, or all values
+#         if no parameter names given
+
+#         Usage: show
+#         Usage: show [parameter-name] ([parameter-name] ...)
+
+#         """
+#         if len(arg) > 0:
+#             try:
+#                 for key in arg.split():
+#                     val = self._defaults[key]
+#                     print(key + " = " + str(val))
+#             except:
+#                 print("No such default "+key)
+#         else:
+#             print("%4u defaults" % len(self._defaults))
+#             for key, val in self._defaults.items():
+#                 print(key + " = " + str(val))
+
+#     def complete_show(self, text, line, start_index, end_index):
+#         """Tab-complete the set of defaults in any position"""
+
+#         matches = []
+#         beginning = line[len("show "):]
+#         for key in self._defaults:
+#             if key.startswith(beginning):
+#                 matches.append(key[len(beginning) - len(text):])
+#         return matches
+
+#     def do_runcap(self, arg):
+#         """
+#         Invoke a capability, identified by label or token. Uses any
+#         default temporal scope set by a previous when command, and any
+#         applicable default parameters. Parameters and temporal
+#         scopes required for the capability but not present are prompted for.
+
+#         The optional second argument sets a label for the specification (which
+#         will apply to the receipt and results as well). If no relabel is given,
+#         the specification will have the same label as the capability, with a
+#         serial number attached.
+
+#         Usage: runcap [label-or-token] ([relabel])
+
+#         """
+
+#         try:
+#             arglist = arg.split()
+
+#             if len(arglist) >= 1:
+#                 capspec = arglist[0]
+#                 if len(arglist) >= 2:
+#                     relabel = arglist[1]
+#                 else:
+#                     relabel = None
+#             else:
+#                 print("Usage: runcap [label-or-token] ([relabel])")
+#                 return
+#         except:
+#             print("Usage: runcap [label-or-token] ([relabel])")
+#             return
+
+#         # Retrieve a capability
+#         cap = self._client.capability_for(capspec)
+
+#         # Prompt for when if missing or inappropriate
+#         while self._when is None or \
+#               not self._when.follows(cap.when()):
+#             sys.stdout.write("|when| = ")
+#             self._when = mplane.model.When(input())
+
+#         # Prompt for missing capabilities (saving these in defaults)
+#         params = self._get_params(cap)
+
+#         # Now invoke it
+#         self._client.invoke_capability(cap.get_token(), self._when, params, relabel)
+#         print("ok")
+
+#     def complete_runcap(self, text, line, start_index, end_index):
+#         """Tab-complete known capability labels and tokens in first position"""
+
+#         matches = []
+#         beginning = line[len("runcap "):]
+#         for label in self._client.capability_labels():
+#             if label.startswith(beginning):
+#                 matches.append(label[len(beginning) - len(text):])
+
+#         for token in self._client.capability_tokens():
+#             if token.startswith(beginning):
+#                 matches.append(token[len(beginning) - len(text):])
+#         return matches
+
+#     def do_savespec(self, arg):
+#         """
+#         Save capabilities and parameters as specifications in an envelope to a file.
+#         If no valid parameters are defined, they will be prompted for.
+
+#         If no labels or tokens are given, all capabilities get saved.
+
+#         Usage: savespec [filepath] ([label-or-token] ...)
+
+#         """
+#         #shlex handles quotes in paths correctly
+#         arg = shlex.split(arg)
+
+#         if(len(arg) < 1):
+#             print("Usage: savespec [filepath] ([label-or-token])")
+#             return
+#         path = arg.pop(0)
+
+#         caps = []
+#         if(len(arg) == 0):
+#             for token in sorted(self._client.capability_tokens()):
+#                 caps.append(self._client.capability_for(token))
+#         else:
+#             for label in arg:
+#                 caps.append(self._client.capability_for(label))
+
+#         env = mplane.model.Envelope()
+#         for cap in caps:
+#             spec = mplane.model.Specification(capability = cap)
+#             print("Processing " + spec.get_label() + "...")
+#             # set temporal scope
+#             if self._when is not None:
+#                 spec.set_when(self._when)
+#             # fill in parameters
+#             params = self._get_params(cap)
+#             for pname in spec.parameter_names():
+#                 if spec.get_parameter_value(pname) is None:
+#                     if pname in params:
+#                         spec.set_parameter_value(pname, params[pname])
+#             try:
+#                 spec.validate()
+#             except ValueError:
+#                 print(spec.get_label() + " has missing parameters")
+#                 continue
+#             env.append_message(spec)
+
+#         env_json = mplane.model.unparse_json(env)
+#         with open(path, "w") as f:
+#             print(env_json, file = f)
+#         print("ok")
+
+#     def do_loadspec(self, arg):
+#         """
+#         Loads a specification from a file and sets all parameters to the found values.
+#         All parameters except "when" will be loaded.
+#         The specification needs to be inside an envelope.
+
+#         Usage: loadspec [filepath] [label]
+
+#         """
+#         #shlex handles quotes in paths correctly
+#         arg = shlex.split(arg)
+
+#         if(len(arg) < 2):
+#             print("Usage: loadspec [filepath] [label]")
+#             return
+
+#         path = arg.pop(0)
+#         label = arg.pop(0)
+#         spec = self._spec_from_file(path, label)
+
+#         self._defaults.update(spec.parameter_values())
+#         print("ok")
+
+#     def do_loadrunspec(self, arg):
+#         """
+#         Loads a specification from a file, runs it, and sets all parameters to the found values.
+#         All parameters except "when" will be loaded.
+#         The specification needs to be inside an envelope.
+
+#         Usage: loadrunspec [filepath] [label]
+
+#         """
+#         #shlex handles quotes in paths correctly
+#         arg = shlex.split(arg)
+
+#         if(len(arg) < 2):
+#             print("Usage: loadrunspec [filepath] [label]")
+#             return
+
+#         path = arg.pop(0)
+#         label = arg.pop(0)
+        
+#         cap = self._client.capability_for(label)
+#         spec = self._spec_from_file(path, label)
+#         spec.fulfills(cap)
+#         self._defaults.update(spec.parameter_values())
+
+#         #Prompt for when if missing or inappropriate
+#         while self._when is None or \
+#               not self._when.follows(cap.when()):
+#             sys.stdout.write("|when| = ")
+#             self._when = mplane.model.When(input())
+
+#         #invoke capability
+#         self._client.invoke_capability(label, self._when, self._defaults)
+#         print("ok")
+
+#     def _spec_from_file(self, filepath, label):
+#         """
+#         Loads and returns a specification with the given label from a file
+#         """
+#         env = mplane.model.Envelope()
+#         spec = None
+
+#         with open(filepath, "r") as f:
+#             env = mplane.model.parse_json(f.read())
+
+#         for message in env.messages():
+#             if message.get_label() == label:
+#                 spec = message
+#                 break
+#         if spec is None:
+#             raise ValueError("Couldn't find specification with label " + label + " in " + filepath)
+#         return spec
+
+#     def _get_params(self, cap):
+#         """
+#         Asks user for parameter values of a capability, if missing
+#         """
+#         params = {}
+#         for pname in sorted(cap.parameter_names()):
+#             while pname not in self._defaults or \
+#                   not cap.can_set_parameter_value(pname, self._defaults[pname]):
+#                 single_val = cap.get_single_parameter_value(pname)
+#                 if single_val is not None:
+#                     self._defaults[pname] = str(single_val)
+#                     sys.stdout.write(pname + " = " + str(single_val) + "\n")
+#                 else:
+#                     sys.stdout.write(pname + " = ")
+#                     self._defaults[pname] = input()
+#             params[pname] = self._defaults[pname]
+#         return params
+
+#     def do_listmeas(self, arg):
+#         """
+#         List running/completed measurements by label and/or token
+
+#         Usage: listmeas
+
+#         """
+#         for label in self._client.receipt_labels():
+#             rec = self._client.result_for(label)
+#             if isinstance(rec, mplane.model.Receipt):
+#                 print("Receipt %s (token %s): %s" %
+#                       (label, rec.get_token(), rec.when()))
+
+#         for token in self._client.receipt_tokens():
+#             rec = self._client.result_for(token)
+#             if isinstance(rec, mplane.model.Receipt):
+#                 if rec.get_label() is None:
+#                     print("Receipt (token %s): %s" % (token, rec.when()))
+
+#         for label in self._client.result_labels():
+#             res = self._client.result_for(label)
+#             if not isinstance(res, mplane.model.Exception):
+#                 print("Result  %s (token %s): %s" %
+#                       (label, res.get_token(), res.when()))
+
+#         for token in self._client.result_tokens():
+#             res = self._client.result_for(token)
+#             if isinstance(res, mplane.model.Exception):
+#                 print(res.__repr__())
+#             elif res.get_label() is None:
+#                 print("Result  (token %s): %s" % (token, res.when()))
+
+#     def do_stopmeas(self, arg):
+#         """
+#         Interrupts the measurement identified by label and/or token
+
+#         Usage: stopmeas [label-or-token]
+
+#         """
+#         try:
+#             meas_tol = arg.split()[0]
+#         except:
+#             print("Usage: stopmeas [label-or-token]")
+#             return
+
+#         self._client.interrupt_capability(meas_tol)
+
+#     def complete_stopmeas(self, text, line, start_index, end_index):
+#         """Tab-complete known capability labels and tokens in first position"""
+
+#         matches = []
+#         beginning = line[len("stopmeas "):]
+#         for label in self._client.receipt_labels():
+#             if label.startswith(beginning):
+#                 matches.append(label[len(beginning) - len(text):])
+#         for token in self._client.receipt_tokens():
+#             if token.startswith(beginning):
+#                 matches.append(token[len(beginning) - len(text):])
+#         for label in self._client.result_labels():
+#             if label.startswith(beginning):
+#                 matches.append(label[len(beginning) - len(text):])
+#         for token in self._client.result_tokens():
+#             if token.startswith(beginning):
+#                 matches.append(token[len(beginning) - len(text):])
+#         return matches
+
+#     def do_showmeas(self, arg):
+#         """
+#         Show details of measurements by label and/or token
+
+#         Usage: showmeas [label-or-token]
+
+#         """
+#         try:
+#             meas = arg.split()[0]
+#         except:
+#             print("Usage: showmeas [label-or-token]")
+#             return
+
+#         res = self._client.result_for(meas)
+#         mplane.model.render_text(res)
+
+#     def complete_showmeas(self, text, line, start_index, end_index):
+#         """Tab-complete known capability labels and tokens in first position"""
+
+#         matches = []
+#         beginning = line[len("showmeas "):]
+#         for label in self._client.receipt_labels():
+#             if label.startswith(beginning):
+#                 matches.append(label[len(beginning) - len(text):])
+#         for token in self._client.receipt_tokens():
+#             if token.startswith(beginning):
+#                 matches.append(token[len(beginning) - len(text):])
+#         for label in self._client.result_labels():
+#             if label.startswith(beginning):
+#                 matches.append(label[len(beginning) - len(text):])
+#         for token in self._client.result_tokens():
+#             if token.startswith(beginning):
+#                 matches.append(token[len(beginning) - len(text):])
+#         return matches
+
+#     def do_savemeas(self, arg):
+#         """
+#         Save results of measurements in an envelope to a file.
+
+#         If no labels or tokens are given, all results get saved.
+
+#         Usage: savemeas [filepath] ([label-or-token] ...)
+
+#         """
+#         #shlex handles quotes in paths correctly
+#         arg = shlex.split(arg)
+
+#         if(len(arg) < 1):
+#             print("Usage: savemeas [filepath] ([label-or-token])")
+#             return
+#         path = arg.pop(0)
+
+#         results = []
+#         if(len(arg) == 0):
+#             for token in self._client.result_tokens():
+#                 results.append(self._client.result_for(token))
+#         else:
+#             for label in arg:
+#                 results.append(self._client.result_for(label))
+
+#         env = mplane.model.Envelope()
+#         for res in results:
+#             env.append_message(res)
+
+#         env_json = mplane.model.unparse_json(env)
+#         with open(path, "w") as f:
+#             print(env_json, file = f)
+#         print("ok")
+
+#     def do_tbenable(self, arg):
+#         """Enable tracebacks on uncaught exceptions"""
+#         self._print_tracebacks = True
+
+#     def do_EOF(self, arg):
+#         """Exit the shell by typing ^D"""
+#         print("Ciao!")
+#         self.exited = True
+#         return True
+
+#     def handle_uncaught(self, e):
+#         print("An exception occurred:")
+#         print(e)
+#         if self._print_tracebacks:
+#             traceback.print_tb(sys.exc_info()[2])
+#         print("You can try to continue, but client state may be inconsistent.")
+
+# if __name__ == "__main__":
+
+#     # start logging
+#     logging.basicConfig(format='[%(asctime)s] %(levelname)s: %(message)s', level=logging.DEBUG)
+
+#     parser = argparse.ArgumentParser(description="mPlane generic testing client")
+#     parser.add_argument('--config', metavar="config-file",
+#                         help="Configuration file")
+#     args = parser.parse_args()
+
+#     # check if conf file parameter has been inserted in the command line
+#     if not args.config:
+#         config = None
+#     else:
+#         # Read the configuration file
+#         config = mplane.utils.get_config(args.config)
+
+#     # create a shell
+#     cs = ClientShell(config)
+
+#     while not cs.exited:
+#         try:
+#             cs.cmdloop()
+#         except Exception as e:
+#             cs.handle_uncaught(e)

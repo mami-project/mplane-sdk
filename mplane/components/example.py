@@ -19,7 +19,7 @@
 #
 
 import mplane.model
-import mplane.scheduler
+import mplane.component
 import mplane.utils
 
 """
@@ -57,7 +57,7 @@ def example_capability_without_param():
     cap.add_result_column("bytes.forward")
     return cap
 
-class exampleService(mplane.scheduler.Service):
+class exampleService(mplane.component.Service):
     """
     This class handles the capabilities exposed by the component:
     executes them, and fills the results
@@ -68,10 +68,12 @@ class exampleService(mplane.scheduler.Service):
         super(exampleService, self).__init__(cap)
         self._fileconf = fileconf
 
-    def run(self, spec, check_interrupt):
+    async def run(self, spec, check_interrupt):
         """ Execute this Service """
 
-        # Run measurements here
+        # Run measurements here. Be sure to break up long-running, 
+        # CPU-intensive tasks (or spawn subprocesses for them)
+        await asyncio.sleep(0)
 
         res = mplane.model.Result(specification=spec)
         # fill the Result here

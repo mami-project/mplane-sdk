@@ -1,5 +1,5 @@
-import mplane.async_component
-import mplane.async_client
+import mplane.component
+import mplane.client
 import mplane.model
 import websockets
 import logging
@@ -52,7 +52,7 @@ class ComponentTestService():
 def test_basic_component():
 
     # make a component and a client context
-    tc = mplane.async_component.CommonComponent(None)
+    tc = mplane.component.CommonComponent(None)
     tc.services.append(ComponentTestService())
     ccc = tc._client_context("/i_am_citizen_three")
 
@@ -149,7 +149,7 @@ def test_wsserver_component(delay=30):
     loop = asyncio.get_event_loop()
 
     # get a component 
-    tc = mplane.async_component.WSServerComponent({
+    tc = mplane.component.WSServerComponent({
             "Component" : {
                 "WSListener" : {
                     "interface" : "",
@@ -177,7 +177,7 @@ def test_client_initiated(delay=30):
     #loop.set_debug(True)
 
     # get a component and kick it off
-    tcom = mplane.async_component.WSServerComponent({
+    tcom = mplane.component.WSServerComponent({
             "Component" : {
                 "WSListener" : {
                     "interface" : "",
@@ -192,7 +192,7 @@ def test_client_initiated(delay=30):
     logger.info("Component up")
 
     # now get a client
-    tcli = mplane.async_client.WSClientClient({
+    tcli = mplane.client.WSClientClient({
         "Client" : {
             "WSInitiator" : {
                 "url": "ws://localhost:8727/i_am_citizen_five"
@@ -237,7 +237,7 @@ def test_component_initiated(delay=30):
     loop.set_debug(True)
 
     # get a client
-    tcli = mplane.async_client.WSServerClient({
+    tcli = mplane.client.WSServerClient({
         "Client" : {
                 "WSListener" : {
                     "interface" : "",
@@ -250,7 +250,7 @@ def test_component_initiated(delay=30):
     logger.info("Client up")
 
     # get a component 
-    tcom = mplane.async_component.WSClientComponent({
+    tcom = mplane.component.WSClientComponent({
             "Component" : {
                 "WSInitiator" : {
                     "url": "ws://localhost:8727/i_am_citizen_six"

@@ -42,7 +42,7 @@ class Service(object):
     mplane.model.Capability provided by a component.
 
     To use services with an mPlane scheduler, inherit from
-    mplane.scheduler.Service or one of its subclasses
+    mplane.component.Service or one of its subclasses
     and implement run().
 
     """

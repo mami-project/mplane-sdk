@@ -34,7 +34,7 @@ from time import sleep
 import threading
 from threading import Thread
 
-class RelayService(mplane.scheduler.Service):
+class RelayService(mplane.component.Service):
     """
     This class is used by the supervisor as a wrapper for capabilities received by the components.
 

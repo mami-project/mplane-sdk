@@ -32,9 +32,9 @@ import subprocess
 import collections
 from datetime import datetime
 import mplane.model
-import mplane.scheduler
+import mplane.component
 import socket
-
+import asyncio
 
 _pingline_re = re.compile("icmp_seq=(\d+)\s+\S+=(\d+)\s+time=([\d\.]+)\s+ms")
 
@@ -59,7 +59,7 @@ def services(ip4addr = None, ip6addr = None):
                 s.connect(("8.8.8.8", 80))
                 ip4addr = s.getsockname()[0]
             except BaseException as e:
-                print("Cannot deterine source IP address: %s",e)
+                print("Cannot determine source IP address: %s",e)
                 ip4addr = "127.0.0.1"
         services.append(PingService(ping4_aggregate_capability(ip4addr)))
         services.append(PingService(ping4_singleton_capability(ip4addr)))
@@ -76,7 +76,7 @@ def _parse_ping_line(line):
     mg = m.groups()
     return PingValue(datetime.utcnow(), int(mg[0]), int(mg[1]), int(float(mg[2]) * 1000))
 
-def _ping_process(progname, sipaddr, dipaddr, period=None, count=None):
+async def _ping_process(progname, sipaddr, dipaddr, period=None, count=None):
     ping_argv = [progname]
     if period is not None:
         ping_argv += [_pingopt_period, str(period)]
@@ -87,13 +87,15 @@ def _ping_process(progname, sipaddr, dipaddr, period=None, count=None):
 
     print("running " + " ".join(ping_argv))
 
-    return subprocess.Popen(ping_argv, stdout=subprocess.PIPE)
+    # FIXME this might not be right...
+    # return subprocess.Popen(ping_argv, stdout=subprocess.PIPE)
+    return await asyncio.create_subprocess_exec(ping_argv, stdout=subprocess.PIPE)
 
-def _ping4_process(sipaddr, dipaddr, period=None, count=None):
-    return _ping_process(_ping4cmd, sipaddr, dipaddr, period, count)
+async def _ping4_process(sipaddr, dipaddr, period=None, count=None):
+    return await _ping_process(_ping4cmd, sipaddr, dipaddr, period, count)
 
-def _ping6_process(sipaddr, dipaddr, period=None, count=None):
-    return _ping_process(_ping6cmd, sipaddr, dipaddr, period, count)
+async def _ping6_process(sipaddr, dipaddr, period=None, count=None):
+    return await _ping_process(_ping6cmd, sipaddr, dipaddr, period, count)
 
 def pings_min_delay(pings):
     return min(map(lambda x: x.usec, pings))
@@ -149,7 +151,7 @@ def ping6_singleton_capability(ipaddr):
     cap.add_result_column("delay.twoway.icmp.us")
     return cap
 
-class PingService(mplane.scheduler.Service):
+class PingService(mplane.component.Service):
     def __init__(self, cap):
         # verify the capability is acceptable
         if not ((cap.has_parameter("source.ip4") or 
@@ -164,7 +166,7 @@ class PingService(mplane.scheduler.Service):
             raise ValueError("capability not acceptable")
         super(PingService, self).__init__(cap)
 
-    def run(self, spec, check_interrupt):
+    async def run(self, spec, check_interrupt):
          # unpack parameters
         period = int(spec.when().period().total_seconds())
         duration = spec.when().duration().total_seconds()
@@ -176,17 +178,18 @@ class PingService(mplane.scheduler.Service):
         if spec.has_parameter("destination.ip4"):
             sipaddr = spec.get_parameter_value("source.ip4")
             dipaddr = spec.get_parameter_value("destination.ip4")
-            ping_process = _ping4_process(sipaddr, dipaddr, period, count)
+            ping_process = await _ping4_process(sipaddr, dipaddr, period, count)
         elif spec.has_parameter("destination.ip6"):
             sipaddr = spec.get_parameter_value("source.ip6")
             dipaddr = spec.get_parameter_value("destination.ip6")
-            ping_process = _ping6_process(sipaddr, dipaddr, period, count)
+            ping_process = await _ping6_process(sipaddr, dipaddr, period, count)
         else:
             raise ValueError("Missing destination")
 
         # read output from ping
+        # FIXME make sure async for is correct here
         pings = []
-        for line in ping_process.stdout:
+        async for line in ping_process.stdout:
             if check_interrupt():
                 break
             oneping = _parse_ping_line(line.decode("utf-8"))
@@ -199,7 +202,7 @@ class PingService(mplane.scheduler.Service):
             ping_process.kill()
         except OSError:
             pass
-        ping_process.wait()
+        await ping_process.wait()
 
         # derive a result from the specification
         res = mplane.model.Result(specification=spec)
@@ -227,6 +230,5 @@ class PingService(mplane.scheduler.Service):
                 res.set_result_value("delay.twoway.icmp.us.max", pings_max_delay(pings))
             if res.has_result_column("delay.twoway.icmp.count"):
                 res.set_result_value("delay.twoway.icmp.count", len(pings))
-
 
         return res

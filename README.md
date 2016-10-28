@@ -36,13 +36,13 @@ See [doc/protocol-spec.md](doc/protocol-spec.md) for the mPlane protocol specifi
 
 ## Contents
 
-See [https://fp7mplane.github.io/protocol-ri](https://fp7mplane.github.io/protocol-ri) for Sphinx documentation of the SDK modules. The SDK is made up of several modules:
+See [https://mplane-sdk.readthedocs.org](https://mplane-sdk.readthedocs.org) for Sphinx documentation of the SDK modules. The SDK is made up of several modules:
 
 - `mplane.model`: Information model and JSON representation of mPlane messages.
-- `mplane.scheduler`: Component specification scheduler. Maps capabilities to Python code that implements them (in `Service`) and keeps track of running specifications and associated results (`Job` and `MultiJob`).
 - `mplane.tls`: Handles TLS, mapping local and peer certificates to identities and providing TLS connectivity over HTTPS.
 - `mplane.azn`: Handles access control, mapping identities to roles and authorizing roles to use specific services.
-- `mplane.client`: mPlane client framework. Handles client-initiated (`HttpClient`) and component-initiated (`ListenerHttpClient`) workflows.
+- `mplane.client`: mPlane client framework. Handles client-initiated (`WSClientClient`) and component-initiated (`WSServerClient`) workflows.
+- `mplane.component: mPlane component framework. Handles client-initiated (`WSServerComponent`) and component-initiated (`WSClientComponent`) workflows. Defines the Service interface for implementing services to run on components.
 
 There are two scripts installed with the package, as well:
 

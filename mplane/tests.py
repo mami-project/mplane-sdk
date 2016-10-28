@@ -27,7 +27,7 @@ import mplane.azn
 import mplane.tls
 import mplane.utils
 import mplane.model
-import mplane.scheduler
+#import mplane.scheduler
 import tornado.httpserver
 import tornado.ioloop
 import tornado.web
@@ -217,155 +217,156 @@ def test_peer_identity():
 
 #
 # mplane.scheduler tests
+# FIXME these all need to be replaced with tests on mplane.Component
 #
 
-def create_test_capability():
-    mplane.model.initialize_registry()
-    cap = mplane.model.Capability()
-    cap.set_when("now ... future / 1s")
-    cap.add_parameter("source.ip4", "10.0.27.2")
-    cap.add_parameter("destination.ip4")
-    cap.add_result_column("delay.twoway.icmp.us.min")
-    cap.add_result_column("delay.twoway.icmp.us.max")
-    cap.add_result_column("delay.twoway.icmp.us.mean")
-    cap.add_result_column("delay.twoway.icmp.count")
-    cap.add_result_column("packets.lost")
-    return cap
+# def create_test_capability():
+#     mplane.model.initialize_registry()
+#     cap = mplane.model.Capability()
+#     cap.set_when("now ... future / 1s")
+#     cap.add_parameter("source.ip4", "10.0.27.2")
+#     cap.add_parameter("destination.ip4")
+#     cap.add_result_column("delay.twoway.icmp.us.min")
+#     cap.add_result_column("delay.twoway.icmp.us.max")
+#     cap.add_result_column("delay.twoway.icmp.us.mean")
+#     cap.add_result_column("delay.twoway.icmp.count")
+#     cap.add_result_column("packets.lost")
+#     return cap
 
-def create_test_specification():
-    spec = mplane.model.Specification(capability=st_cap)
-    spec.set_parameter_value("destination.ip4", "10.0.37.2")
-    spec.set_when("2017-12-24 22:18:42 + 1m / 1s")
-    return spec
+# def create_test_specification():
+#     spec = mplane.model.Specification(capability=st_cap)
+#     spec.set_parameter_value("destination.ip4", "10.0.37.2")
+#     spec.set_when("2017-12-24 22:18:42 + 1m / 1s")
+#     return spec
 
-def create_test_results():
-    res = mplane.model.Result(specification=st_spec)
-    res.set_when("2017-12-24 22:18:42.993000 ... " +
-                 "2017-12-24 22:19:42.991000")
-    res.set_result_value("delay.twoway.icmp.us.min", 33155)
-    res.set_result_value("delay.twoway.icmp.us.mean", 55166)
-    res.set_result_value("delay.twoway.icmp.us.max", 192307)
-    res.set_result_value("delay.twoway.icmp.count", 58220)
-    return res
+# def create_test_results():
+#     res = mplane.model.Result(specification=st_spec)
+#     res.set_when("2017-12-24 22:18:42.993000 ... " +
+#                  "2017-12-24 22:19:42.991000")
+#     res.set_result_value("delay.twoway.icmp.us.min", 33155)
+#     res.set_result_value("delay.twoway.icmp.us.mean", 55166)
+#     res.set_result_value("delay.twoway.icmp.us.max", 192307)
+#     res.set_result_value("delay.twoway.icmp.count", 58220)
+#     return res
 
-class SchedulerTestService(mplane.scheduler.Service):
-    def run(self, specification, check_interrupt):
-        return st_res
+# class SchedulerTestService(mplane.component.Service):
+#     def run(self, specification, check_interrupt):
+#         return st_res
 
-st_cap = create_test_capability()
-st_spec = create_test_specification()
-st_receipt = mplane.model.Receipt(specification=st_spec)
-st_res = create_test_results()
+# st_cap = create_test_capability()
+# st_spec = create_test_specification()
+# st_receipt = mplane.model.Receipt(specification=st_spec)
+# st_res = create_test_results()
 
-service = mplane.scheduler.Service(st_cap)
-test_service = SchedulerTestService(st_cap)
-
-
-# Class Service tests:
-
-def test_Service_init():
-    assert_true(isinstance(service, mplane.scheduler.Service))
-    # check parameter assignment
-    assert_equal(service._capability, st_cap)
+# service = mplane.component.Service(st_cap)
+# test_service = SchedulerTestService(st_cap)
 
 
-def test_Service_run():
-    try:
-        service.run(None, None)
-    except NotImplementedError as e:
-        assert_true(isinstance(e, NotImplementedError))
+# # Class Service tests:
+
+# def test_Service_init():
+#     assert_true(isinstance(service, mplane.component.Service))
+#     # check parameter assignment
+#     assert_equal(service._capability, st_cap)
 
 
-def test_TestService_run():
-    assert_equal(test_service.run(None, None), st_res)
+# def test_Service_run():
+#     try:
+#         service.run(None, None)
+#     except NotImplementedError as e:
+#         assert_true(isinstance(e, NotImplementedError))
 
 
-def test_Service_capability():
-    assert_equal(service.capability(), st_cap)
+# def test_TestService_run():
+#     assert_equal(test_service.run(None, None), st_res)
 
 
-# Is this method really needed? Why can't we use
-# set_link method of mplane.model.Statement class?
-def test_Service_capability_link():
-    link = "http://dummy/link.json"
-    service.set_capability_link(link)
-    assert_equal(st_cap.get_link(), link)
+# def test_Service_capability():
+#     assert_equal(service.capability(), st_cap)
 
 
-def test_Service__repr__():
-    assert_equal(repr(service),
-                 "<Service for "+repr(st_cap)+">")
+# # Is this method really needed? Why can't we use
+# # set_link method of mplane.model.Statement class?
+# def test_Service_capability_link():
+#     link = "http://dummy/link.json"
+#     service.set_capability_link(link)
+#     assert_equal(st_cap.get_link(), link)
 
 
-# Class Job tests:
-
-job = mplane.scheduler.Job(test_service, st_spec)
-
-def test_Job_init():
-    assert_true(isinstance(job, mplane.scheduler.Job))
-    # check parameter assignment
-    assert_equal(job.service, test_service)
-    assert_equal(job.specification, st_spec)
-    assert_equal(job.session, None)
-    assert_equal(job._callback, None)
-    assert_true(isinstance(job.receipt, mplane.model.Receipt))
-    assert_true(isinstance(job._interrupt, threading.Event))
+# def test_Service__repr__():
+#     assert_equal(repr(service),
+#                  "<Service for "+repr(st_cap)+">")
 
 
-def test_Job__repr__():
-    assert_equal(repr(job),
-                 "<Job for "+repr(st_spec)+">")
+# # Class Job tests:
+
+# job = mplane.scheduler.Job(test_service, st_spec)
+
+# def test_Job_init():
+#     assert_true(isinstance(job, mplane.scheduler.Job))
+#     # check parameter assignment
+#     assert_equal(job.service, test_service)
+#     assert_equal(job.specification, st_spec)
+#     assert_equal(job.session, None)
+#     assert_equal(job._callback, None)
+#     assert_true(isinstance(job.receipt, mplane.model.Receipt))
+#     assert_true(isinstance(job._interrupt, threading.Event))
 
 
-def test_Job_check_interrupt():
-    # Interrupt is not set since job has not run (yet).
-    assert_false(job._interrupt.is_set())
+# def test_Job__repr__():
+#     assert_equal(repr(job),
+#                  "<Job for "+repr(st_spec)+">")
 
 
-def test_Job_set_interrupt():
-    # Set interrupt
-    job.interrupt()
-    assert_true(job._interrupt.is_set())
+# def test_Job_check_interrupt():
+#     # Interrupt is not set since job has not run (yet).
+#     assert_false(job._interrupt.is_set())
 
 
-def test_Job_finished_false():
-    # Job has not run (yet).
-    assert_false(job.finished())
+# def test_Job_set_interrupt():
+#     # Set interrupt
+#     job.interrupt()
+#     assert_true(job._interrupt.is_set())
 
 
-def test_Job_get_reply_receipt():
-    # Job has not run (yet).
-    assert_true(isinstance(job.get_reply(), mplane.model.Receipt))
+# def test_Job_finished_false():
+#     # Job has not run (yet).
+#     assert_false(job.finished())
 
 
-def test_Job_run():
-    assert_equal(job.result, None)
-    job._run()
-    assert_equal(job.result, st_res)
+# def test_Job_get_reply_receipt():
+#     # Job has not run (yet).
+#     assert_true(isinstance(job.get_reply(), mplane.model.Receipt))
 
 
-def test_Job_finished_true():
-    # Job has run.
-    assert_true(job.finished())
+# def test_Job_run():
+#     assert_equal(job.result, None)
+#     job._run()
+#     assert_equal(job.result, st_res)
 
 
-def test_Job_get_reply_result():
-    # Job has run.
-    assert_true(isinstance(job.get_reply(), mplane.model.Result))
-
-# Create a job that fails
-job_failure = mplane.scheduler.Job(service, st_spec)
+# def test_Job_finished_true():
+#     # Job has run.
+#     assert_true(job.finished())
 
 
-def test_Job_failed():
-    # Making job to fail.
-    job_failure._run()
-    assert_true(job_failure.failed)
+# def test_Job_get_reply_result():
+#     # Job has run.
+#     assert_true(isinstance(job.get_reply(), mplane.model.Result))
+
+# # Create a job that fails
+# job_failure = mplane.scheduler.Job(service, st_spec)
 
 
-def test_Job_get_reply_failed():
-    # Job has failed.
-    assert_true(isinstance(job_failure.get_reply(), mplane.model.Exception))
+# def test_Job_failed():
+#     # Making job to fail.
+#     job_failure._run()
+#     assert_true(job_failure.failed)
+
+
+# def test_Job_get_reply_failed():
+#     # Job has failed.
+#     assert_true(isinstance(job_failure.get_reply(), mplane.model.Exception))
 
 #
 # mplane.utils tests
