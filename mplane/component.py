@@ -375,32 +375,38 @@ class WSServerComponent(CommonComponent):
             logger.debug("shutting down, outq:"+str(ccc.outq.qsize()))
 
     def run_forever(self):
-        asyncio.get_event_loop().run_until_complete(self._start_server)
-        asyncio.get_event_loop().run_forever()
+        self._loop.run_until_complete(self._start_server)
+        self._loop.run_forever()
 
     def run_until_shutdown(self):
-        self.wssvr = asyncio.get_event_loop().run_until_complete(self._start_server)
-        asyncio.get_event_loop().run_until_complete(self._sde.wait())
+        self.wssvr = self._loop.run_until_complete(self._start_server)
+        self._loop.run_until_complete(self._sde.wait())
         self.wssvr.close()
 
+    def shutdown_on_sigterm(self):
+        """
+        Add a signal handler to shut down on SIGTERM.
+        """
+        signal.signal(signal.SIGTERM, lambda: self.loop.call_soon_threadsafe(self._sde.set))
+
     def start_running(self):
-        self.wssvr = asyncio.get_event_loop().run_until_complete(self._start_server)
+        self.wssvr = self._loop.run_until_complete(self._start_server)
 
     def stop_running(self):
         self._sde.set()
         self.wssvr.close()
-        asyncio.get_event_loop().run_until_complete(self.wssvr.wait_closed())
+        self._loop.run_until_complete(self.wssvr.wait_closed())
 
 
 
 
 #######################################################################
-# Websocket client component (not yet tested)
+# Websocket client component
 #######################################################################
 
 class WSClientComponent(CommonComponent):
     """
-    A Component which acts as a WebSockets server
+    A Component which acts as a WebSockets client
     (for component-initiated connection establishment). 
     """
     def __init__(self, config):
@@ -469,13 +475,13 @@ class WSClientComponent(CommonComponent):
         logger.debug("signaling shutdown")
         self._sde.set()
         try:
-            asyncio.get_event_loop().run_until_complete(self._task)
+            self._loop.run_until_complete(self._task)
         except Exception as e:
             logger.debug(repr(e))
 
 
     # def run_until_shutdown(self):
-    #     wscli = asyncio.get_event_loop().run_until_complete(self.connect())
+    #     wscli = self._loop.run_until_complete(self.connect())
     #     wscli.close()
 
     # async def shutdown(self):

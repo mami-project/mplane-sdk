@@ -45,12 +45,16 @@ if __name__ == "__main__":
     # Try to read the configuration file
     config = mplane.utils.get_config(args.config)
 
+    # Instantiate the component
     if "Listener" in config["Component"]:
-        component = mplane.component.ListenerHttpComponent(config)
+        component = mplane.component.WSServerComponent(config)
         if "Initiator" in config["Component"]: 
             print("Ignoring 'Initiator' section in configuration file")
     elif "Initiator" in config["Component"]:
-        component = mplane.component.InitiatorHttpComponent(config)
+        component = mplane.component.WSClientComponent(config)
     else:
         logger.critical("Need either a 'Initiator' or 'Listener' under 'Component' in " + args.config)
 
+    # Run it until shutdown
+    component.shutdown_on_sigterm()
+    component.run_until_shutdown()

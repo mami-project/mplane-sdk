@@ -50,21 +50,26 @@ class AsyncPromptShell:
         else:
             self.loop = asyncio.get_event_loop()
 
-    async def next_command(self):
+    async def next_command(self, text=None):
         # display a prompt and get input
-        try:
-            text = await prompt_async(self.prompt_text, 
-                                      history=self.history, 
-                                      completer=self.completer)
-        except EOFError:
-            return self.cmd_quit()
+        if not text:
+            try:
+                text = await prompt_async(self.prompt_text, 
+                                          history=self.history, 
+                                          completer=self.completer)
+            except EOFError:
+                return self.cmd_quit()
 
-        # shortcut hitting enter
-        if not len(text):
+        # shortcut blank lines and comments
+        if not len(text.lstrip()) or text.lstrip().startswith("#")
             return
 
         # split into command and args
         (cmd, *args) = text.split()
+
+        # dot means source
+        if cmd == ".":
+            cmd = "source"
 
         try:
             fn_name = "cmd_"+cmd.lower()
@@ -148,6 +153,11 @@ class AsyncPromptShell:
                 "no help available"
         else:
             print(self._summary())
+
+    def cmd_source(self, filename, *ignored):
+        with open(filename) as script:
+            for line in script:
+                self.loop.run_until_complete(next_command(line))
 
     def cmd_quit(self, *ignored):
         """

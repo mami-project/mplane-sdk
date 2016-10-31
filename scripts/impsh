@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 ##
-# mPlane Protocol Reference Implementation
-# Simple client command-line interface
+# mPlane Software Development Kit for Python 3
+# Interactive mPlane Client/Component Shell
 #
 # (c) 2013-2014 mPlane Consortium (http://www.ict-mplane.eu)
 #               Author: Brian Trammell <brian@trammell.ch>
@@ -32,13 +32,52 @@ class MpcliCompleter(Completer):
         pass
 
 class MpcliShell(AsyncPromptShell):
+    """
+    MpcliShell implements impsh, the Interactive mPlane Shell.
+
+    impsh allows interactive instantiation of clients and components,
+    supporting both client-initiated and component-initiated workflows.
+    It provides interactive control of specifications and access to
+    results for clients it instantiates, and access to statistics for
+    components it instantiates.
+
+    """
 
     def __init__(self):
         super().__init__("|mpcli| ", MpcliCompleter())
 
+    def cmd_client(self, config, *args):
+        """
+        Instantiate a client.
+
+        """
+        pass
+
+    def cmd_component(self, config, *args):
+        """
+        Instantiate a component.
+
+        """
+        pass
+
+    def cmd_select(self, name):
+        """
+        Select a client or component to work on.
+
+        """
+
+    def cmd_shutdown(self, name):
+        """
+        Shut down the selected client/component
+
+        """
+
+
+
 if __name__ == "__main__":
 
-    AsyncPromptShell("|test| ").go()
+    ### for now just make sure AsyncPromptShell works...
+    AsyncPromptShell("|impsh-test| ").go()
 
 ### 
 ### Old ClientShell based code goes here
