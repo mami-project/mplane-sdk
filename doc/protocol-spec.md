@@ -180,7 +180,7 @@ An example registry with two elements and no includes follows:
 
 ```
 { "registry-format": "mplane-0",
-  "registry-uri", "http://ict-mplane.eu/registry/core",
+  "registry-uri", "http://mami-project.eu/mplane/registry/core",
   "registry-revision": 0,
   "includes": [],
   "elements": [
@@ -196,7 +196,7 @@ An example registry with two elements and no includes follows:
 }
 ```
 
-__Fully qualified__ element names consist of the element's name as an anchor after the URI from which the element came, e.g. `http://ict-mplane.eu/registry/core#full.structured.name`. Elements within the type registry are considered globally equal based on their fully qualified names. However, within a given mPlane message, elements are considered equal based on unqualified names.
+__Fully qualified__ element names consist of the element's name as an anchor after the URI from which the element came, e.g. `http://mami-project.eu/mplane/registry/core#full.structured.name`. Elements within the type registry are considered globally equal based on their fully qualified names. However, within a given mPlane message, elements are considered equal based on unqualified names.
 
 ### Structured Element Names
 
@@ -232,7 +232,7 @@ The mPlane protocol supports the following primitive types for elements in the t
 
 Additional keys beyond __prim__, __desc__, and __name__ may appear in an mPlane registry to augment information about each element; these are not presently used by the SDK's information model but may be used by software built around the SDK.
 
-Elements in the core registry at `http://ict-mplane.eu/registry/core` may contain the following augmented registry keys:
+Elements in the core registry at `http://mami-project.eu/mplane/registry/core` may contain the following augmented registry keys:
 
 - __units__: If applicable, units in which the element is expressed; equal to the units part of a structured name if present.
 - __ipfix-eid__: The element ID of the equivalent IPFIX ([RFC 7011](http://tools.ietf.org/html/7011)) Information Element.
@@ -360,7 +360,7 @@ The `version` section contains the version of the mPlane protocol to which the m
 
 The `registry` section contains the URL identifying the element registry used by this message, and from which the registry can be retrieved. This section is required in all messages containing element names (statements, and receipts/redemptions/interrupts not using tokens for identification; see the `token` section). The default core registry for mPlane is identified by:
 
-`http://ict-mplane.eu/registry/core`.
+`http://mami-project.eu/mplane/registry/core`.
 
 ### Label
 
@@ -663,7 +663,7 @@ To illustrate how mPlane messages are encoded, we consider first two capabilitie
 {
   "capability": "measure",
   "version":    0,
-  "registry":   "http://ict-mplane.eu/registry/core",
+  "registry":   "http://mami-project.eu/mplane/registry/core",
   "label":      "ping-aggregate",
   "when":       "now ... future / 1s",
   "parameters": {"source.ip4":      "192.0.2.19",
@@ -682,7 +682,7 @@ In contrast, the following capability would return timestamped singleton delay m
 {
   "capability": "measure",
   "version":    0,
-  "registry":   "http://ict-mplane.eu/registry/core",
+  "registry":   "http://mami-project.eu/mplane/registry/core",
   "label":      "ping-singletons",
   "when":       "now ... future / 1s",
   "parameters": {"source.ip4":      "192.0.2.19",
@@ -698,7 +698,7 @@ A specification is merely a capability with filled-in parameters, e.g.:
 {
   "specification":  "measure",
   "version":        0,
-  "registry":       "http://ict-mplane.eu/registry/core",
+  "registry":       "http://mami-project.eu/mplane/registry/core",
   "label":          "ping-aggregate-three-thirtythree",
   "token":          "0f31c9033f8fce0c9be41d4942c276e4",
   "when":           "now + 30s / 1s",
@@ -718,7 +718,7 @@ Results are merely specifications with result values filled in and an absolute t
 {
   "result":         "measure",
   "version":        0,
-  "registry":       "http://ict-mplane.eu/registry/core",
+  "registry":       "http://mami-project.eu/mplane/registry/core",
   "label":          "ping-aggregate-three-thirtythree",
   "token":          "0f31c9033f8fce0c9be41d4942c276e4",
   "when":           "2014-08-25 14:51:02.623 ... 2014-08-25 14:51:32.701 / 1s",
@@ -743,7 +743,7 @@ More complex measurements can be modeled by mapping them back to tables with mul
 {
   "capability": "measure",
   "version":    0,
-  "registry":   "http://ict-mplane.eu/registry/core",
+  "registry":   "http://mami-project.eu/mplane/registry/core",
   "label":      "traceroute",
   "when":       "now ... future / 1s",
   "parameters": {"source.ip4":      "192.0.2.19",
@@ -762,7 +762,7 @@ with a corresponding specification:
 {
   "specification": "measure",
   "version":    0,
-  "registry":   "http://ict-mplane.eu/registry/core",
+  "registry":   "http://mami-project.eu/mplane/registry/core",
   "label":      "traceroute-three-thirtythree",
   "token":      "2f4123588b276470b3641297ae85376a",
   "when":       "now",
@@ -782,7 +782,7 @@ and an example result:
 {
   "result": "measure",
   "version":    0,
-  "registry":   "http://ict-mplane.eu/registry/core",
+  "registry":   "http://mami-project.eu/mplane/registry/core",
   "label":      "traceroute-three-thirtythree",
   "token":      "2f4123588b276470b3641297ae85376a,
   "when":       "2014-08-25 14:53:11.019 ... 2014-08-25 14:53:12.765",
@@ -810,7 +810,7 @@ Indirect export to a repository with subsequent query requires three capabilitie
 {
   "capability": "collect",
   "version":    0,
-  "registry":   "http://ict-mplane.eu/registry/core",
+  "registry":   "http://mami-project.eu/mplane/registry/core",
   "label":      "ping-aggregate-collect",
   "when":       "past ... future",
   "export":     "mplane-https://repository.example.com:4343/result",
@@ -830,7 +830,7 @@ This capability states that the repository at `https://repository.example.com:43
 {
   "capability": "measure",
   "version":    0,
-  "registry":   "http://ict-mplane.eu/registry/core",
+  "registry":   "http://mami-project.eu/mplane/registry/core",
   "label":      "ping-aggregate-export",
   "when":       "now ... future / 1s",
   "export":     "mplane-https",
@@ -850,7 +850,7 @@ which differs only from the previous probe capability in that it states that res
 {
   "capability": "query",
   "version":    0,
-  "registry":   "http://ict-mplane.eu/registry/core",
+  "registry":   "http://mami-project.eu/mplane/registry/core",
   "label":      "ping-aggregate-query",
   "when":       "past ... future",
   "link":       "mplane-https://repository.example.com:4343/specification",
@@ -985,7 +985,7 @@ To use callback control, the component advertises the following capability along
 {
  'capability': 'callback',
  'version':    0,
- 'registry':   'http://ict-mplane.eu/registry/core',
+ 'registry':   'http://mami-project.eu/mplane/registry/core',
  'when':       'now ... future',
  'parameters': {},
  'results':    []
@@ -998,7 +998,7 @@ Then, when the component polls the client the first time, it responds with an en
 {
  'specification': 'callback',
  'version':       0,
- 'registry':      'http://ict-mplane.eu/registry/core',
+ 'registry':      'http://mami-project.eu/mplane/registry/core',
  'when':          '2014-09-08 12:40:00.000',
  'parameters':    {},
  'results':       []

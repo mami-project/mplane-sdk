@@ -86,7 +86,7 @@ download or configuration:
 >>> capjson # doctest: +SKIP
 '{"capability": "measure",
   "version": 1,
-  "registry": "http://ict-mplane.eu/registry/core",
+  "registry": "http://mami-project.eu/mplane/registry/core",
   "when": "now ... future / 1s",
   "parameters": {"source.ip4": "10.0.27.2",
                  "destination.ip4": "*"},
@@ -132,7 +132,7 @@ the component from which we got the capability:
 >>> specjson # doctest: +SKIP
 '{"specification": "measure",
   "version": 1,
-  "registry": "http://ict-mplane.eu/registry/core",
+  "registry": "http://mami-project.eu/mplane/registry/core",
   "token": "ea839b56bc3f6004e95d780d7a64d899",
   "when": "2017-12-24 22:18:42.000000 + 1m / 1s",
   "parameters": {"source.ip4": "10.0.27.2",
@@ -174,7 +174,7 @@ The result can then be serialized and sent back to the client:
 >>> resjson # doctest: +SKIP
 '{"result": "measure",
   "version": 1,
-  "registry": "http://ict-mplane.eu/registry/core",
+  "registry": "http://mami-project.eu/mplane/registry/core",
   "token": "ea839b56bc3f6004e95d780d7a64d899",
   "when": "2017-12-24 22:18:42.993000 ... 2017-12-24 22:19:42.991000",
   "parameters": {"source.ip4": "10.0.27.2",
@@ -214,7 +214,7 @@ which can be used to quickly identify it in the future.
 >>> jsonrcpt # doctest: +SKIP
 '{"receipt": "measure",
   "version": 1,
-  "registry": "http://ict-mplane.eu/registry/core",
+  "registry": "http://mami-project.eu/mplane/registry/core",
   "token": "e00d7fe813cf17eeeea37b313dcfa4e7",
   "when": "2017-12-24 22:18:42.000000 + 1m / 1s",
   "parameters": {"destination.ip4": "10.0.37.2",
@@ -243,7 +243,7 @@ results:
 >>> mplane.model.unparse_json(rdpt, token_only=True) # doctest: +SKIP
 '{"redemption": "measure",
   "version": 1,
-  "registry": "http://ict-mplane.eu/registry/core",
+  "registry": "http://mami-project.eu/mplane/registry/core",
   "token": "e00d7fe813cf17eeeea37b313dcfa4e7"
 }'
 
@@ -263,7 +263,7 @@ withdrawal to cancel the previously advertised capability:
 >>> mplane.model.unparse_json(wtdr) # doctest: +SKIP
 '{"withdrawal": "measure",
 "version": 1,
-"registry": "http://ict-mplane.eu/registry/core",
+"registry": "http://mami-project.eu/mplane/registry/core",
 "token": "d7e9df75145e209e144bf9c06e7a9d2f",
 "when": "now ... future / 1s",
 "parameters": {"destination.ip4": "*",
@@ -413,7 +413,7 @@ KEY_ELEMENTS = "elements"
 KEY_ELEMNAME = "name"
 KEY_ELEMPRIM = "prim"
 KEY_ELEMDESC = "desc"
-REGURI_DEFAULT = "http://ict-mplane.eu/registry/core"
+REGURI_DEFAULT = "http://mami-project.eu/mplane/registry/core"
 REGFMT_FLAT = "mplane-0"
 
 #######################################################################
@@ -1658,7 +1658,7 @@ def test_registry():
     assert test_registry["testName"].primitive_name() == "time"
     assert test_registry["testName"].desc() == "testDesc"
     # element from the parent registry
-    assert repr(test_registry["start"]) == "<Element http://ict-mplane.eu/registry/core#start mplane.model.prim_time >"
+    assert repr(test_registry["start"]) == "<Element http://mami-project.eu/mplane/registry/core#start mplane.model.prim_time >"
     assert test_registry["start"].name() == "start"
     assert test_registry["start"].primitive_name() == "time"
     assert test_registry["start"].desc() == "Start time of an event/flow that may have a non-zero duration"
@@ -1670,7 +1670,7 @@ def test_registry():
 
     # default registry through the element-method
     initialize_registry()
-    assert repr(element("start")) == "<Element http://ict-mplane.eu/registry/core#start mplane.model.prim_time >"
+    assert repr(element("start")) == "<Element http://mami-project.eu/mplane/registry/core#start mplane.model.prim_time >"
     assert element("start").name() == "start"
     assert element("start").primitive_name() == "time"
     assert element("start").desc() == "Start time of an event/flow that may have a non-zero duration"

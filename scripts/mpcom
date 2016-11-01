@@ -45,6 +45,9 @@ if __name__ == "__main__":
     # Try to read the configuration file
     config = mplane.utils.get_config(args.config)
 
+    # Preload the registry
+    mplane.utils.configure_registry(config)
+
     # Instantiate the component
     if "Listener" in config["Component"]:
         component = mplane.component.WSServerComponent(config)

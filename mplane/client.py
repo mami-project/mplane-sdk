@@ -341,7 +341,7 @@ class WSClientClient(CommonClient):
         self._task = None
 
         # Configuration
-        self.url = config["Client"]["WSInitiator"]["url"]
+        self.url = config["Client"]["Initiator"]["url"]
         self.tls = mplane.tls.TlsState(config)
 
     async def connect(self):
@@ -355,33 +355,6 @@ class WSClientClient(CommonClient):
 
             try:
                 await self.handle_websocket(websocket, ccc)
-                # while not self._sde.is_set():
-
-                #     rx = asyncio.ensure_future(websocket.recv())
-                #     tx = asyncio.ensure_future(ccc.outq.get())
-                #     sd = asyncio.ensure_future(self._sde.wait())
-                #     done, pending = await asyncio.wait([rx, tx, sd], 
-                #                         return_when=asyncio.FIRST_COMPLETED)
-
-                #     if rx in done:
-                #         try:
-                #             msg = mplane.model.parse_json(rx.result())
-                #         except Exception as e:
-                #             ccc.send(mplane.model.Exception(errmsg="parse error: "+repr(e)))
-                #         else:
-                #             self.message_from(mplane.model.parse_json(rx.result()), ccc)
-                #     else:
-                #         rx.cancel()
-
-                #     if tx in done:
-                #         await websocket.send(mplane.model.unparse_json(tx.result()))
-                #     else:
-                #         tx.cancel()
-
-                #     if sd in done:
-                #         break
-                #     else:
-                #         sd.cancel()
 
             except websockets.exceptions.ConnectionClosed:
                 # FIXME schedule a reconnection attempt
@@ -417,10 +390,16 @@ class WSServerClient(CommonClient):
         self._sde = asyncio.Event()
 
         # Connection information
-        interface = config["Client"]["WSListener"]["interface"]
-        port = int(config["Client"]["WSListener"]["port"])
+        interfaces = config["Client"]["Listener"]["interfaces"]
+        port = int(config["Client"]["Listener"]["port"])
         tls = mplane.tls.TlsState(config)
-        
+
+        if len(interfaces) == 0:
+            interface = ""
+        if len(interfaces) > 1:
+            logger.warning("ignoring all but the first interface, listening on "+interfaces[0])
+            interface = interfaces[0]
+
         # Coroutine to bring the server up
         self._start_server = websockets.server.serve(self.serve, interface, port, ssl=tls.get_ssl_context())
 
@@ -432,33 +411,6 @@ class WSServerClient(CommonClient):
         # now exchange messages forever
         try: 
             await self.handle_websocket(websocket, ccc)
-
-            # while not self._sde.is_set():
-            #     rx = asyncio.ensure_future(websocket.recv())
-            #     tx = asyncio.ensure_future(ccc.outq.get())
-            #     sd = asyncio.ensure_future(self._sde.wait())
-            #     done, pending = await asyncio.wait([rx, tx, sd], 
-            #                         return_when=asyncio.FIRST_COMPLETED)
-
-            #     if rx in done:
-            #         try:
-            #             msg = mplane.model.parse_json(rx.result())
-            #         except Exception as e:
-            #             ccc.send(mplane.model.Exception(errmsg="parse error: "+repr(e)))
-            #         else:
-            #             self.message_from(mplane.model.parse_json(rx.result()), ccc)
-            #     else:
-            #         rx.cancel()
-
-            #     if tx in done:
-            #         await websocket.send(mplane.model.unparse_json(tx.result()))
-            #     else:
-            #         tx.cancel()
-
-            #     if sd in done:
-            #         break
-            #     else:
-            #         sd.cancel()
 
         except websockets.exceptions.ConnectionClosed:
             logger.debug("connection from "+ccc.coid+" closed")

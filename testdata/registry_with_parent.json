@@ -2,7 +2,7 @@
   "registry-format": "mplane-0",
   "registry-revision": 0,
   "registry-uri": "testdata/registry_with_parent.json",
-  "includes": ["http://ict-mplane.eu/registry/core"],
+  "includes": ["http://mami-project.eu/mplane/registry/core"],
   "elements": [
     {
       "name": "testName",

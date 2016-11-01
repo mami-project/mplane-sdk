@@ -58,72 +58,18 @@ class TlsState:
         # load cert and get DN
         self._identity = self.extract_local_identity(forged_identity)
 
-
-    # PROBABLY DEPRECATED
-    @functools.lru_cache()
-    def pool_for(self, scheme, host, port):
-        """
-        Given a URL (from which a scheme and host can be extracted),
-        return a connection pool (potentially with TLS state)
-        which can be used to connect to the URL.
-        """
-
-        if scheme is None:
-            if self._keyfile:
-                return urllib3.HTTPSConnectionPool(host, port,
-                                                    key_file=self._keyfile,
-                                                    cert_file=self._certfile,
-                                                    ca_certs=self._cafile)
-            else:
-                return urllib3.HTTPConnectionPool(host, port)
-        elif scheme == "http":
-            return urllib3.HTTPConnectionPool(host, port)
-        elif scheme == "https":
-            if self._keyfile:
-                return urllib3.HTTPSConnectionPool(host, port,
-                                                    key_file=self._keyfile,
-                                                    cert_file=self._certfile,
-                                                    ca_certs=self._cafile)
-            else:
-                raise ValueError("SSL requested without providing certificate")
-        elif scheme == "file":
-            # FIXME what to do here?
-            raise ValueError("Unsupported scheme "+scheme)
-        else:
-            raise ValueError("Unsupported scheme "+scheme)
-
-    # ALMOST CERTAINLY DEPRECATED
-    def forged_identity(self):
-        if not self._keyfile:
-            return self._identity
-        else:
-            return None
-
-    # NO TORNADO MEANS DEPRECATED
-    def get_ssl_options(self):
-        """
-        Get an ssl_options dictionary for this TLS context suitable
-        for passing to tornado.httpserver.HTTPServer().
-        """
-        if self._keyfile:
-            return dict(certfile=self._certfile,
-                         keyfile=self._keyfile,
-                        ca_certs=self._cafile,
-                       cert_reqs=ssl.CERT_REQUIRED)
-        else:
-            return None
-
     # WRITE ME PLEASE
     def get_ssl_context(self):
         """
         Return an ssl.SSLContext object reflecting this TLS context,
-        suitable for use with the asyncio, and websockets modules
+        suitable for use with the asyncio and websockets modules
 
         """
         # FIXME make this actually work
         return None
 
     # REWRITE ME. Probably call me get_local_identity, and use CommonName.
+    # Do not rely on an ASCII preamble, because ick.
     def extract_local_identity(self, forged_identity = None):
         """
         Extract an identity from the designated name in an X.509 certificate
@@ -184,3 +130,62 @@ class TlsState:
         else:
             identity = DUMMY_DN
         return identity
+
+############
+## delete everything down here when finishing websockets port
+############
+
+    # # PROBABLY DEPRECATED
+    # @functools.lru_cache()
+    # def pool_for(self, scheme, host, port):
+    #     """
+    #     Given a URL (from which a scheme and host can be extracted),
+    #     return a connection pool (potentially with TLS state)
+    #     which can be used to connect to the URL.
+    #     """
+
+    #     if scheme is None:
+    #         if self._keyfile:
+    #             return urllib3.HTTPSConnectionPool(host, port,
+    #                                                 key_file=self._keyfile,
+    #                                                 cert_file=self._certfile,
+    #                                                 ca_certs=self._cafile)
+    #         else:
+    #             return urllib3.HTTPConnectionPool(host, port)
+    #     elif scheme == "http":
+    #         return urllib3.HTTPConnectionPool(host, port)
+    #     elif scheme == "https":
+    #         if self._keyfile:
+    #             return urllib3.HTTPSConnectionPool(host, port,
+    #                                                 key_file=self._keyfile,
+    #                                                 cert_file=self._certfile,
+    #                                                 ca_certs=self._cafile)
+    #         else:
+    #             raise ValueError("SSL requested without providing certificate")
+    #     elif scheme == "file":
+    #         # FIXME what to do here?
+    #         raise ValueError("Unsupported scheme "+scheme)
+    #     else:
+    #         raise ValueError("Unsupported scheme "+scheme)
+
+    # # ALMOST CERTAINLY DEPRECATED
+    # def forged_identity(self):
+    #     if not self._keyfile:
+    #         return self._identity
+    #     else:
+    #         return None
+
+    # # NO TORNADO MEANS DEPRECATED
+    # def get_ssl_options(self):
+    #     """
+    #     Get an ssl_options dictionary for this TLS context suitable
+    #     for passing to tornado.httpserver.HTTPServer().
+    #     """
+    #     if self._keyfile:
+    #         return dict(certfile=self._certfile,
+    #                      keyfile=self._keyfile,
+    #                     ca_certs=self._cafile,
+    #                    cert_reqs=ssl.CERT_REQUIRED)
+    #     else:
+    #         return None
+

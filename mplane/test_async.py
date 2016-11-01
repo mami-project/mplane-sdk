@@ -151,8 +151,8 @@ def test_wsserver_component(delay=30):
     # get a component 
     tc = mplane.component.WSServerComponent({
             "Component" : {
-                "WSListener" : {
-                    "interface" : "",
+                "Listener" : {
+                    "interfaces" : [],
                     "port" : 8727
                 }
             }
@@ -179,8 +179,8 @@ def test_client_initiated(delay=30):
     # get a component and kick it off
     tcom = mplane.component.WSServerComponent({
             "Component" : {
-                "WSListener" : {
-                    "interface" : "",
+                "Listener" : {
+                    "interfaces" : [],
                     "port" : 8727
                 }
             }
@@ -194,7 +194,7 @@ def test_client_initiated(delay=30):
     # now get a client
     tcli = mplane.client.WSClientClient({
         "Client" : {
-            "WSInitiator" : {
+            "Initiator" : {
                 "url": "ws://localhost:8727/i_am_citizen_five"
                 }
             }
@@ -239,8 +239,8 @@ def test_component_initiated(delay=30):
     # get a client
     tcli = mplane.client.WSServerClient({
         "Client" : {
-                "WSListener" : {
-                    "interface" : "",
+                "Listener" : {
+                    "interfaces" : [],
                     "port" : 8727
                 } 
             }
@@ -252,7 +252,7 @@ def test_component_initiated(delay=30):
     # get a component 
     tcom = mplane.component.WSClientComponent({
             "Component" : {
-                "WSInitiator" : {
+                "Initiator" : {
                     "url": "ws://localhost:8727/i_am_citizen_six"
                 }
             }

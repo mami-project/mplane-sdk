@@ -1,7 +1,7 @@
 {
   "registry-format": "mplane-0",
   "registry-revision": 0,
-  "registry-uri": "http://ict-mplane.eu/registry/core",
+  "registry-uri": "http://mami-project.eu/mplane/registry/core/",
   "elements": [
     {
       "name": "start",
@@ -54,19 +54,14 @@
       "desc": "Source layer 4 port of an event/flow, or the port from which packets were sent when an active measurement was taken"
     },
     {
-      "name": "source.interface",
-      "prim": "string",
-      "desc": "A locally-scoped identifier of an interface to which the source of an event/flow is attached, or from which an active measurement was taken"
-    },
-    {
-      "name": "source.device",
-      "prim": "string",
-      "desc": "A locally-scoped identifier of a source device of an event/flow, or from which an active measurement was taken"
-    },
-    {
       "name": "source.as",
       "prim": "natural",
       "desc": "BGP AS number of the source of an event/flow, or AS originating an active measurement"
+    },
+    {
+      "name": "source.pseudonym",
+      "prim": "string",
+      "desc": "pseudonymous identifier for the source/originator of an event/flow"
     },
     {
       "name": "destination.ip4",
@@ -84,19 +79,14 @@
       "desc": "The destination layer 4 port of an event/flow, or the port to which packets were sent when an active measurement was taken"
     },
     {
-      "name": "destination.interface",
-      "prim": "string",
-      "desc": "A locally-scoped identifier of an interface to which the destination of an event/flow is attached, or the target interface of an active measurement"
-    },
-    {
-      "name": "destination.device",
-      "prim": "string",
-      "desc": "A locally-scoped identifier of a destination device of an event/flow, or the target of an active measurement"
-    },
-    {
       "name": "destination.as",
       "prim": "natural",
       "desc": "BGP AS number of the destination of an event/flow, or AS target of an active measurement"
+    },
+    {
+      "name": "destination.pseudonym",
+      "prim": "string",
+      "desc": "pseudonymous identifier for the destination/target of an event/flow"
     },
     {
       "name": "destination.url",
@@ -119,19 +109,14 @@
       "desc": "A locally-scoped identifier of the link on which a passive measurement was observed"
     },
     {
-      "name": "observer.interface",
-      "prim": "string",
-      "desc": "A locally-scoped identifier of the interface on which a passive measurement was observed"
-    },
-    {
-      "name": "observer.device",
-      "prim": "string",
-      "desc": "A locally-scoped identifier of the device on which a passive measurement was observed"
-    },
-    {
       "name": "observer.as",
       "prim": "natural",
       "desc": "BGP AS number of the observer of a passive measurement or looking glass"
+    },
+    {
+      "name": "observer.pseudonym",
+      "prim": "string",
+      "desc": "pseudonymous identifier of the observer of a passive measurement of an event/flow"
     },
     {
       "name": "intermediate.ip4",
@@ -239,7 +224,7 @@
       "desc": "Count of unidirectional flows (see RFC 7011) associated with an event or measurement"
     },
     {
-      "name": "flows.bidirectional",
+      "name": "biflows",
       "prim": "natural",
       "desc": "Count of bidirectional flows (see RFC 7011 and 5103) associated with an event or measurement"
     },
@@ -272,36 +257,6 @@
       "name": "delay.twoway.icmp.count",
       "prim": "natural",
       "desc": "Count of valid ICMP Echo Replies received when measuring two-way delay using ICMP Echo Request/Reply (see RFC 792)"
-    },
-    {
-      "name": "delay.oneway.owamp.us",
-      "prim": "natural",
-      "desc": "Singleton one-way delay along a path as measured by OWAMP (see RFC 3763) in microseconds"
-    },
-    {
-      "name": "delay.oneway.owamp.us.min",
-      "prim": "natural",
-      "desc": "Minimum one-way delay along a path as measured by OWAMP (see RFC 3763) in microseconds"
-    },
-    {
-      "name": "delay.oneway.owamp.us.mean",
-      "prim": "natural",
-      "desc": "Mean one-way delay along a path as measured by OWAMP (see RFC 3763) in microseconds"
-    },
-    {
-      "name": "delay.oneway.owamp.us.50pct",
-      "prim": "natural",
-      "desc": "Median one-way delay along a path as measured by OWAMP (see RFC 3763) in microseconds"
-    },
-    {
-      "name": "delay.oneway.owamp.us.max",
-      "prim": "natural",
-      "desc": "Maximum one-way delay along a path as measured by OWAMP (see RFC 3763) in microseconds"
-    },
-    {
-      "name": "delay.oneway.owamp.count",
-      "prim": "natural",
-      "desc": "Count of samples for one-way delay measurements using OWAMP (see RFC 3763)"
     },
     {
       "name": "delay.queue.us",
@@ -469,56 +424,6 @@
       "desc": "Count of application-layer sessions associated with an event"
     },
     {
-      "name": "cpuload",
-      "prim": "real",
-      "desc": "Normalized CPU load on the identified device"
-    },
-    {
-      "name": "memload",
-      "prim": "real",
-      "desc": "Normalized memory load on the identified device"
-    },
-    {
-      "name": "linkload",
-      "prim": "real",
-      "desc": "Normalized link load on the identified interface or link"
-    },
-    {
-      "name": "bufferload",
-      "prim": "real",
-      "desc": "Normalized buffer load on the identified device"
-    },
-    {
-      "name": "bufferstalls",
-      "prim": "natural",
-      "desc": "Count of buffer stalls (imputed playback quality degradation) associated with a flow/event"
-    },
-    {
-      "name": "snr",
-      "prim": "real",
-      "desc": "Signal to noise ratio in decibels, either in a radio access network or in an audio transmission context"
-    },
-    {
-      "name": "period.s",
-      "prim": "natural",
-      "desc": "DEPRECATED and to be removed before D1.4. Use temporal scopes instead."
-    },
-    {
-      "name": "period.ms",
-      "prim": "natural",
-      "desc": "DEPRECATED and to be removed before D1.4. Use temporal scopes instead."
-    },
-    {
-      "name": "period.us",
-      "prim": "natural",
-      "desc": "DEPRECATED and to be removed before D1.4. Use temporal scopes instead."
-    },
-    {
-      "name": "period.ns",
-      "prim": "natural",
-      "desc": "DEPRECATED and to be removed before D1.4. Use temporal scopes instead."
-    },
-    {
       "name": "measurement.identifier",
       "prim": "string",
       "desc": "Free-form string identifying the implementation of the measurement on the component; often the name of the external program"
@@ -552,18 +457,6 @@
       "name": "location.civil",
       "prim": "string",
       "desc": "A free-form identifier of the civil location (postal address, city name, building name, etc) of the component"
-    },
-    {
-      "name": "System_type",
-      "prim": "string"
-    },
-    {
-      "name": "System_ID",
-      "prim": "string"
-    },
-    {
-      "name": "System_version",
-      "prim": "string"
     }
   ]
 }

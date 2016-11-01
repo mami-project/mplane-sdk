@@ -126,4 +126,18 @@ def get_config(config_file):
     with open(mplane.utils.search_path(config_file)) as f:
         return json.load(f)
 
-
+def configure_registry(config):
+    if config is not None:
+        if "Registries" in config:
+            if "preload" in config["Registries"]:
+                for reg in config["Registries"]["preload"]:
+                    mplane.model.preload_registry(reg)
+            if "default" in config["Registries"]:
+                registry_uri = config["Registries"]["default"]
+            else:
+                registry_uri = None
+        else:
+            registry_uri = None
+    else:
+        registry_uri = None
+    mplane.model.initialize_registry(registry_uri)
